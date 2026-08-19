@@ -202,7 +202,7 @@ export const DiseaseDetector: React.FC<DiseaseDetectorProps> = ({
 
     for (const quality of [0.78, 0.65, 0.5, 0.35]) {
       const compressedImage = canvas.toDataURL("image/jpeg", quality);
-      if (compressedImage.length <= 4 * 1024 * 1024) {
+      if (compressedImage.length <= 2.75 * 1024 * 1024) {
         return compressedImage;
       }
     }
