@@ -181,6 +181,35 @@ export const DiseaseDetector: React.FC<DiseaseDetectorProps> = ({
   };
 
   // Trigger disease analysis
+  const prepareImageForAnalysis = async (image: string): Promise<string> => {
+    if (!image.startsWith("data:")) return image;
+
+    const imageElement = new Image();
+    imageElement.src = image;
+    await new Promise<void>((resolve, reject) => {
+      imageElement.onload = () => resolve();
+      imageElement.onerror = () => reject(new Error("Unable to prepare image"));
+    });
+
+    const maxDimension = 1600;
+    const scale = Math.min(1, maxDimension / Math.max(imageElement.naturalWidth, imageElement.naturalHeight));
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(imageElement.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(imageElement.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return image;
+    context.drawImage(imageElement, 0, 0, canvas.width, canvas.height);
+
+    for (const quality of [0.78, 0.65, 0.5, 0.35]) {
+      const compressedImage = canvas.toDataURL("image/jpeg", quality);
+      if (compressedImage.length <= 4 * 1024 * 1024) {
+        return compressedImage;
+      }
+    }
+
+    return canvas.toDataURL("image/jpeg", 0.25);
+  };
+
   const handleAnalyze = async () => {
     if (!imagePreview) {
       setErrorMessage(
@@ -195,11 +224,12 @@ export const DiseaseDetector: React.FC<DiseaseDetectorProps> = ({
     setErrorMessage(null);
 
     try {
+      const preparedImage = await prepareImageForAnalysis(imagePreview);
       const res = await fetch("/api/analyze-crop", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imageBase64: imagePreview,
+          imageBase64: preparedImage,
           cropHint: selectedCrop,
           language: language,
         }),

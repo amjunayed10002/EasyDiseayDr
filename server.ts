@@ -13,6 +13,43 @@ const PORT = 3000;
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
+const appSettings = {
+  loginRequired: false,
+  customLogo: "",
+  contactAdmin: {
+    email: "315222057@hamdarduniversity.edu.bd",
+    phone: "+880123456789",
+    description: "Forget anything send us email with mention your User ID",
+    displayStyle: "card_green" as const,
+  },
+};
+
+app.get("/api/settings", (_req: Request, res: Response): void => {
+  res.json(appSettings);
+});
+
+app.post("/api/admin/login", (req: Request, res: Response): void => {
+  if (req.body?.password !== "admin123") {
+    res.status(401).json({ error: "Invalid administrative passcode." });
+    return;
+  }
+  res.json({ success: true, token: "admin-session" });
+});
+
+app.post("/api/user/login", (req: Request, res: Response): void => {
+  const userId = String(req.body?.userId || "").trim();
+  const loginCode = String(req.body?.loginCode || "").trim();
+  if (userId === "948210" && loginCode === "948210") {
+    res.json({ success: true, user: { userId, fullName: "EasyDiseay User", role: "user" } });
+    return;
+  }
+  res.status(401).json({ error: "Invalid User ID or Login Code." });
+});
+
+app.post("/api/analytics/track", (_req: Request, res: Response): void => {
+  res.json({ success: true });
+});
+
 // In-memory data store for persistent simulation with rich initial Bangladeshi crop records
 interface AnalysisRecord {
   id: string;
@@ -643,6 +680,7 @@ app.post("/api/analyze-crop", async (req: Request, res: Response): Promise<void>
 
     visitCount += 1;
     totalRequestsToday += 1;
+    let imageUrl = imageBase64;
     let mimeType = "image/jpeg";
     let base64Data = imageBase64;
     if (imageBase64.startsWith("data:")) {
@@ -650,6 +688,7 @@ app.post("/api/analyze-crop", async (req: Request, res: Response): Promise<void>
       const match = imageBase64.match(/^data:([^;]+);/);
       if (match) mimeType = match[1];
       base64Data = parts[1] || "";
+      imageUrl = `data:${mimeType};base64,${base64Data}`;
     }
 
     const response = await openai.chat.completions.create({
@@ -659,7 +698,7 @@ app.post("/api/analyze-crop", async (req: Request, res: Response): Promise<void>
         { role: "system", content: "You are EasyDiseay's careful agricultural plant pathologist for Bangladesh. Return only the requested structured diagnosis." },
         { role: "user", content: [
           { type: "text", text: `Analyze this crop or plant leaf image. ${cropHint ? `The user provided crop context: "${cropHint}".` : "Identify the crop if visible."} Tailor the diagnosis to Bangladesh conditions and registered local agro-medicines. Use English for normal fields and Bangla for fields ending in Bn. The requested interface language is ${language === "bn" ? "Bangla" : "English"}.` },
-          { type: "image_url", image_url: { url: `data:${mimeType};base64,${base64Data}` } },
+          { type: "image_url", image_url: { url: imageUrl } },
         ] },
       ],
       response_format: { type: "json_schema", json_schema: { name: "crop_disease_analysis", strict: true, schema: analysisJsonSchema } },
