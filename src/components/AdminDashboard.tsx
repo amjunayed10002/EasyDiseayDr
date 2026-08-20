@@ -7,6 +7,7 @@ import {
   RegisteredUser,
   RegistrationRequest,
   ContactAdminInfo,
+  SupportedCrop,
 } from "../types";
 import { translations } from "../translations";
 import { Logo } from "./Logo";
@@ -109,6 +110,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     displayStyle: "card_green",
   });
   const [contactSavedMessage, setContactSavedMessage] = useState<string | null>(null);
+  const [supportedCrops, setSupportedCrops] = useState<SupportedCrop[]>([]);
+  const [newSupportedCrop, setNewSupportedCrop] = useState({ name: "", nameBn: "", imageUrl: "" });
 
   // Helper: Generate unique ID starting with ED + 4-5 digits e.g. ED11694
   const generateRandomEDId = () => {
@@ -171,7 +174,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   // Fetch data
   const fetchData = async () => {
     try {
-      const [resAnalyses, resStats, resMeds, resDis, resSettings, resUsers, resReqs] = await Promise.all([
+      const [resAnalyses, resStats, resMeds, resDis, resSettings, resUsers, resReqs, resCrops] = await Promise.all([
         fetch("/api/analyses"),
         fetch("/api/stats"),
         fetch("/api/medicines"),
@@ -179,6 +182,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         fetch("/api/settings"),
         fetch("/api/users"),
         fetch("/api/registration-requests"),
+        fetch("/api/supported-crops"),
       ]);
 
       if (resAnalyses.ok) {
@@ -220,6 +224,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       if (resReqs.ok) {
         const reqs = await resReqs.json();
         setRegistrationRequests(reqs);
+      }
+      if (resCrops.ok) {
+        const crops = await resCrops.json();
+        setSupportedCrops(Array.isArray(crops) ? crops : []);
       }
     } catch (e) {
       console.error("Error fetching admin data:", e);
@@ -469,6 +477,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } catch (e) {
       console.error(e);
     }
+  };
+
+  const handleCreateSupportedCrop = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const res = await fetch("/api/supported-crops", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(newSupportedCrop),
+    });
+    const data = await res.json();
+    if (res.ok && data.crop) {
+      setSupportedCrops((previous) => [data.crop, ...previous]);
+      setNewSupportedCrop({ name: "", nameBn: "", imageUrl: "" });
+    }
+  };
+
+  const handleDeleteSupportedCrop = async (id: string) => {
+    if (!window.confirm("Remove this supported crop from the public page?")) return;
+    const res = await fetch(`/api/supported-crops/${id}`, { method: "DELETE" });
+    if (res.ok) setSupportedCrops((previous) => previous.filter((crop) => crop.id !== id));
+  };
+
+  const handleSupportedCropImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setNewSupportedCrop((previous) => ({ ...previous, imageUrl: String(reader.result || "") }));
+    reader.readAsDataURL(file);
   };
 
   // Filtered analyses
@@ -1687,6 +1723,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
+            <div className="bg-white p-6 sm:p-7 rounded-2xl border border-gray-200 shadow-xs space-y-5">
+              <div className="border-b border-gray-100 pb-3">
+                <h3 className="text-base font-bold text-gray-900">Supported Crops Management</h3>
+                <p className="text-xs text-gray-500 mt-1">Add or remove crops shown on the public home page.</p>
+              </div>
+              <form onSubmit={handleCreateSupportedCrop} className="grid gap-3 sm:grid-cols-2">
+                <input required value={newSupportedCrop.name} onChange={(e) => setNewSupportedCrop({ ...newSupportedCrop, name: e.target.value })} placeholder="Crop name in English" className="p-2.5 border border-gray-200 rounded-xl text-xs" />
+                <input required value={newSupportedCrop.nameBn} onChange={(e) => setNewSupportedCrop({ ...newSupportedCrop, nameBn: e.target.value })} placeholder="Crop name in Bangla" className="p-2.5 border border-gray-200 rounded-xl text-xs" />
+                <input type="url" value={newSupportedCrop.imageUrl} onChange={(e) => setNewSupportedCrop({ ...newSupportedCrop, imageUrl: e.target.value })} placeholder="Image URL (optional)" className="p-2.5 border border-gray-200 rounded-xl text-xs" />
+                <label className="flex cursor-pointer items-center rounded-xl border border-dashed border-gray-300 p-2.5 text-xs font-bold text-gray-600"><Upload className="mr-2 h-4 w-4" /> Upload crop image<input type="file" accept="image/*" onChange={handleSupportedCropImage} className="hidden" /></label>
+                <button type="submit" className="sm:col-span-2 rounded-xl bg-[#146C3D] px-5 py-2.5 text-xs font-bold text-white">Add Supported Crop</button>
+              </form>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {supportedCrops.map((crop) => (
+                  <div key={crop.id} className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 p-3">
+                    <div className="flex items-center gap-2 min-w-0">{crop.imageUrl ? <img src={crop.imageUrl} alt="" className="h-9 w-9 rounded-lg object-cover" /> : null}<span className="truncate text-xs font-bold">{crop.name} ({crop.nameBn})</span></div>
+                    <button type="button" onClick={() => handleDeleteSupportedCrop(crop.id)} className="text-xs font-bold text-rose-600">Remove</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {/* System Configuration Card */}
             <div className="bg-white p-6 sm:p-7 rounded-2xl border border-gray-200 shadow-xs space-y-4">
               <h3 className="text-base font-bold text-gray-900">System Configuration</h3>
@@ -1696,25 +1754,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <input
                     type="text"
                     disabled
-                    value="OpenAI Multimodal Diagnostic Network"
-                    className="w-full p-2.5 border border-gray-200 rounded-xl bg-gray-50 font-medium"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Default Agricultural Knowledge Base</label>
-                  <input
-                    type="text"
-                    disabled
-                    value="Department of Agricultural Extension (DAE) Bangladesh"
-                    className="w-full p-2.5 border border-gray-200 rounded-xl bg-gray-50 font-medium"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-gray-700 mb-1">Emergency Krishi Hotline</label>
-                  <input
-                    type="text"
-                    disabled
-                    value="16123 (Krishi Call Center)"
+                    value="Gemini Multimodal Diagnostic Network"
                     className="w-full p-2.5 border border-gray-200 rounded-xl bg-gray-50 font-medium"
                   />
                 </div>

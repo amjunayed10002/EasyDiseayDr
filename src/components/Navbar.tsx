@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Language } from "../types";
 import { translations } from "../translations";
 import { Logo } from "./Logo";
-import { Globe, Menu, X, ShieldAlert, PhoneCall } from "lucide-react";
+import { Globe, Menu, X, ShieldAlert } from "lucide-react";
 
 interface NavbarProps {
   language: Language;
@@ -107,12 +107,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Right Action: Language Switcher Pill matching theme */}
         <div className="flex items-center gap-3">
-          {/* Hotline Quick Badge (Desktop) */}
-          <div className="hidden lg:flex items-center gap-1.5 bg-white/10 px-3 py-1.5 rounded-full border border-white/15 text-xs font-bold text-white">
-            <PhoneCall className="w-3.5 h-3.5 text-[#FFD54F] animate-pulse" />
-            <span>16123 (Krishi Call Center)</span>
-          </div>
-
           {/* Language Switcher Pill */}
           <div
             id="language-switcher-pill"

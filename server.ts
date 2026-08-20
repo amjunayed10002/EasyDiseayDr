@@ -57,8 +57,27 @@ interface RegistrationRequest {
   createdAt: string;
 }
 
+interface SupportedCrop {
+  id: string;
+  name: string;
+  nameBn: string;
+  imageUrl: string;
+}
+
 const usersStore: RegisteredUser[] = [];
 const registrationRequestsStore: RegistrationRequest[] = [];
+let supportedCropsStore: SupportedCrop[] = [
+  { id: "crop-cucumber", name: "Cucumber", nameBn: "শসা", imageUrl: "" },
+  { id: "crop-garlic", name: "Garlic", nameBn: "রসুন", imageUrl: "" },
+  { id: "crop-chili", name: "Chili", nameBn: "মরিচ", imageUrl: "" },
+  { id: "crop-potato", name: "Potato", nameBn: "আলু", imageUrl: "" },
+  { id: "crop-corn", name: "Corn", nameBn: "ভুট্টা", imageUrl: "" },
+  { id: "crop-tomato", name: "Tomato", nameBn: "টমেটো", imageUrl: "" },
+  { id: "crop-brinjal", name: "Brinjal", nameBn: "বেগুন", imageUrl: "" },
+  { id: "crop-jute", name: "Jute", nameBn: "পাট", imageUrl: "" },
+  { id: "crop-wheat", name: "Wheat", nameBn: "গম", imageUrl: "" },
+  { id: "crop-rice", name: "Rice", nameBn: "ধান", imageUrl: "" },
+];
 
 app.get("/api/settings", (_req: Request, res: Response): void => {
   res.json(appSettings);
@@ -659,6 +678,7 @@ const createPersistentSnapshot = (): PersistentSnapshot => ({
   analyses: analysesStore,
   medicines: medicinesStore,
   diseases: diseasesStore,
+  supportedCrops: supportedCropsStore,
 });
 
 const persistState = async (): Promise<void> => {
@@ -682,6 +702,7 @@ const loadState = async (): Promise<void> => {
     analysesStore = snapshot.analyses as AnalysisRecord[];
     medicinesStore = snapshot.medicines as MedicineItem[];
     diseasesStore = snapshot.diseases as DiseaseItem[];
+    if (snapshot.supportedCrops) supportedCropsStore = snapshot.supportedCrops as SupportedCrop[];
   } catch (error) {
     console.error("Persistent state load failed", error instanceof Error ? error.message : "Unknown error");
   }
@@ -744,7 +765,7 @@ const checkAndPerformAutoReset = (): void => {
 
 const getGeminiConfig = (): { apiKey: string; model: string; hasApiKey: boolean } => {
   const apiKey = process.env.GEMINI_API_KEY?.trim() || "";
-  const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+  const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
   return {
     apiKey,
     model,
@@ -772,7 +793,7 @@ const analysisJsonSchema = {
 
 app.post("/api/analyze-crop", async (req: Request, res: Response): Promise<void> => {
   let requestMimeType = "unknown";
-  let geminiModel = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+  let geminiModel = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
   let hasApiKey = Boolean(process.env.GEMINI_API_KEY?.trim());
   try {
     const { imageBase64, cropHint, language } = req.body;
@@ -1653,6 +1674,35 @@ app.post("/api/settings/logo", async (req: Request, res: Response): Promise<void
   appSettings.customLogo = typeof req.body?.logo === "string" ? req.body.logo : "";
   await persistState();
   res.json({ success: true, customLogo: appSettings.customLogo });
+});
+
+app.get("/api/supported-crops", (_req: Request, res: Response): void => {
+  res.json(supportedCropsStore);
+});
+
+app.post("/api/supported-crops", async (req: Request, res: Response): Promise<void> => {
+  const name = String(req.body?.name || "").trim();
+  const nameBn = String(req.body?.nameBn || "").trim();
+  if (!name || !nameBn) {
+    res.status(400).json({ error: "English and Bangla crop names are required." });
+    return;
+  }
+  const crop: SupportedCrop = {
+    id: `crop-${Date.now()}`,
+    name,
+    nameBn,
+    imageUrl: String(req.body?.imageUrl || "").trim(),
+  };
+  supportedCropsStore.unshift(crop);
+  await persistState();
+  res.json({ success: true, crop });
+});
+
+app.delete("/api/supported-crops/:id", async (req: Request, res: Response): Promise<void> => {
+  const before = supportedCropsStore.length;
+  supportedCropsStore = supportedCropsStore.filter((crop) => crop.id !== req.params.id);
+  await persistState();
+  res.json({ success: supportedCropsStore.length < before });
 });
 
 app.post("/api/settings/admin-password", async (req: Request, res: Response): Promise<void> => {

@@ -1,5 +1,5 @@
-import React from "react";
-import { Language } from "../types";
+import React, { useEffect, useState } from "react";
+import { Language, SupportedCrop } from "../types";
 import { translations } from "../translations";
 
 interface SupportedCropsProps {
@@ -12,6 +12,14 @@ export const SupportedCrops: React.FC<SupportedCropsProps> = ({
   onSelectCrop,
 }) => {
   const t = translations[language];
+  const [managedCrops, setManagedCrops] = useState<SupportedCrop[] | null>(null);
+
+  useEffect(() => {
+    fetch("/api/supported-crops")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => { if (Array.isArray(data)) setManagedCrops(data); })
+      .catch(() => {});
+  }, []);
 
   const crops = [
     { key: "Cucumber", label: t.supportedCrops.cucumber },
@@ -26,6 +34,8 @@ export const SupportedCrops: React.FC<SupportedCropsProps> = ({
     { key: "Rice", label: t.supportedCrops.rice },
     { key: "Many More", label: t.supportedCrops.manyMore },
   ];
+
+  const visibleCrops = managedCrops || crops.map((crop, index) => ({ id: String(index), name: crop.key, nameBn: crop.label, imageUrl: "", label: crop.label }));
 
   return (
     <section
@@ -49,14 +59,15 @@ export const SupportedCrops: React.FC<SupportedCropsProps> = ({
 
         {/* Rounded Pill Buttons Grid matching Vibrant Palette */}
         <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3 max-w-4xl mx-auto">
-          {crops.map((crop, idx) => (
+          {visibleCrops.map((crop, idx) => (
             <button
-              key={idx}
-              id={`crop-pill-${crop.key.toLowerCase().replace(/\s+/g, "-")}`}
-              onClick={() => onSelectCrop(crop.key === "Many More" ? "" : crop.key)}
+              key={crop.id || idx}
+              id={`crop-pill-${crop.name.toLowerCase().replace(/\s+/g, "-")}`}
+              onClick={() => onSelectCrop(crop.name)}
               className="inline-flex items-center px-4 py-2 sm:px-5 sm:py-2.5 rounded-full bg-white border border-gray-200 shadow-xs hover:shadow-md hover:border-[#1B5E20] hover:text-[#1B5E20] active:scale-95 transition-all text-sm font-bold text-[#1B3022] cursor-pointer"
             >
-              <span>{crop.label}</span>
+              {crop.imageUrl ? <img src={crop.imageUrl} alt="" className="mr-2 h-6 w-6 rounded-full object-cover" /> : null}
+              <span>{language === "bn" ? crop.nameBn : crop.name}</span>
             </button>
           ))}
         </div>

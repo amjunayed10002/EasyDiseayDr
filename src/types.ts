@@ -82,6 +82,13 @@ export interface ContactAdminInfo {
   displayStyle?: "card_green" | "card_dual";
 }
 
+export interface SupportedCrop {
+  id: string;
+  name: string;
+  nameBn: string;
+  imageUrl: string;
+}
+
 export interface SampleLeaf {
   id: string;
   cropName: string;

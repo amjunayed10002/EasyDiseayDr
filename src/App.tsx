@@ -16,6 +16,8 @@ import { FindNearby } from "./components/FindNearby";
 import { AdminLoginModal } from "./components/AdminLoginModal";
 import { AdminDashboard } from "./components/AdminDashboard";
 import { UserLoginView } from "./components/UserLoginView";
+import { ContactEDModal } from "./components/ContactEDModal";
+import { ContactAdminInfo } from "./types";
 
 export default function App() {
   const [language, setLanguage] = useState<Language>("en");
@@ -28,6 +30,13 @@ export default function App() {
   const [selectedCropHint, setSelectedCropHint] = useState<string>("");
   const [securityMode, setSecurityMode] = useState<boolean>(false);
   const [userSession, setUserSession] = useState<{ userId: string; fullName: string; role?: string } | null>(null);
+  const [contactOpen, setContactOpen] = useState(false);
+  const [contactAdmin, setContactAdmin] = useState<ContactAdminInfo>({
+    email: "315222057@hamdarduniversity.edu.bd",
+    phone: "+880123456789",
+    description: "Contact EasyDiseay administration.",
+    displayStyle: "card_green",
+  });
 
   // Sync custom logo, security mode, user session, and track page view on boot
   useEffect(() => {
@@ -70,6 +79,7 @@ export default function App() {
               setSecurityMode(data.loginRequired);
               localStorage.setItem("easydiseay_security_mode", JSON.stringify(data.loginRequired));
             }
+            if (data.contactAdmin) setContactAdmin(data.contactAdmin);
           }
         })
         .catch(() => {});
@@ -171,6 +181,7 @@ export default function App() {
         <Footer
           language={language}
           onOpenAdmin={() => setAdminModalOpen(true)}
+          onOpenContact={() => setContactOpen(true)}
         />
         <AdminLoginModal
           isOpen={adminModalOpen}
@@ -178,6 +189,7 @@ export default function App() {
           language={language}
           onLoginSuccess={handleLoginSuccess}
         />
+        {contactOpen && <ContactEDModal language={language} contact={contactAdmin} onClose={() => setContactOpen(false)} />}
       </div>
     );
   }
@@ -244,6 +256,7 @@ export default function App() {
       <Footer
         language={language}
         onOpenAdmin={() => setAdminModalOpen(true)}
+        onOpenContact={() => setContactOpen(true)}
       />
 
       {/* Admin Login Dialog */}
@@ -253,6 +266,7 @@ export default function App() {
         language={language}
         onLoginSuccess={handleLoginSuccess}
       />
+      {contactOpen && <ContactEDModal language={language} contact={contactAdmin} onClose={() => setContactOpen(false)} />}
     </div>
   );
 }

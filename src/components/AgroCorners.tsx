@@ -47,7 +47,7 @@ export const AgroCorners: React.FC<AgroCornersProps> = ({ language }) => {
       districtBn: "রংপুর",
       location: "Mithapukur, Rangpur",
       locationBn: "মিঠাপুকুর, রংপুর",
-      contact: "16123 (Krishi Call Center)",
+      contact: "Contact ED for assistance",
       type: "Government Agriculture Office",
       typeBn: "সরকারি কৃষি অফিস",
       brands: ["Free Consultation", "Soil Testing", "Fungicide Guidelines"],

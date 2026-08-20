@@ -7,9 +7,10 @@ import { User, PhoneCall, Heart } from "lucide-react";
 interface FooterProps {
   language: Language;
   onOpenAdmin: () => void;
+  onOpenContact: () => void;
 }
 
-export const Footer: React.FC<FooterProps> = ({ language, onOpenAdmin }) => {
+export const Footer: React.FC<FooterProps> = ({ language, onOpenAdmin, onOpenContact }) => {
   const t = translations[language];
 
   return (
@@ -33,15 +34,12 @@ export const Footer: React.FC<FooterProps> = ({ language, onOpenAdmin }) => {
           </p>
         </div>
 
-        {/* Agricultural Helpline & Support Info */}
+        {/* ED support contact */}
         <div className="flex flex-col items-center sm:items-end gap-1.5">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-white/15 text-xs font-bold text-white">
-            <PhoneCall className="w-3.5 h-3.5 text-[#FFD54F] animate-pulse" />
-            <span>{t.footer.helpline}</span>
-          </div>
-          <p className="text-xs text-white/40 mt-1">
-            Department of Agricultural Extension (DAE) Verified Knowledge Base
-          </p>
+          <button type="button" onClick={onOpenContact} className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-white/15 text-xs font-bold text-white hover:bg-white/20">
+            <PhoneCall className="w-3.5 h-3.5 text-[#FFD54F]" />
+            <span>Contact ED</span>
+          </button>
         </div>
       </div>
 

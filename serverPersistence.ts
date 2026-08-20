@@ -1,4 +1,6 @@
 import dotenv from "dotenv";
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
 
 dotenv.config();
 
@@ -19,39 +21,36 @@ export interface PersistentSnapshot {
   analyses: unknown[];
   medicines: unknown[];
   diseases: unknown[];
+  supportedCrops?: unknown[];
 }
 
-const redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
-const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
-const stateKey = "easydiseay:state";
+let firestore: ReturnType<typeof getFirestore> | null = null;
+try {
+  const serviceAccountBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64?.trim();
+  const serviceAccount = serviceAccountBase64
+    ? JSON.parse(Buffer.from(serviceAccountBase64, "base64").toString("utf8"))
+    : null;
+  const firebaseApp = serviceAccount
+    ? (getApps()[0] || initializeApp({
+        credential: cert(serviceAccount),
+        projectId: process.env.FIREBASE_PROJECT_ID?.trim() || serviceAccount.project_id,
+      }))
+    : null;
+  firestore = firebaseApp ? getFirestore(firebaseApp) : null;
+} catch (error) {
+  console.error("Firebase persistence initialization failed", error instanceof Error ? error.message : "Unknown error");
+}
+const stateDocument = firestore?.collection("easydiseay").doc("state") || null;
 
-const redisRequest = async (command: string, ...args: string[]): Promise<unknown> => {
-  if (!redisUrl || !redisToken) return null;
-  const response = await fetch(redisUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${redisToken}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify([command, ...args]),
-  });
-  if (!response.ok) {
-    throw new Error(`Persistent storage request failed with HTTP ${response.status}`);
-  }
-  const payload = await response.json() as { result?: unknown };
-  return payload.result;
-};
-
-export const persistenceConfigured = Boolean(redisUrl && redisToken);
+export const persistenceConfigured = Boolean(stateDocument);
 
 export const loadPersistentSnapshot = async (): Promise<PersistentSnapshot | null> => {
-  if (!persistenceConfigured) return null;
-  const value = await redisRequest("GET", stateKey);
-  if (typeof value !== "string" || !value) return null;
-  return JSON.parse(value) as PersistentSnapshot;
+  if (!stateDocument) return null;
+  const snapshot = await stateDocument.get();
+  return snapshot.exists ? snapshot.data() as PersistentSnapshot : null;
 };
 
 export const savePersistentSnapshot = async (snapshot: PersistentSnapshot): Promise<void> => {
-  if (!persistenceConfigured) return;
-  await redisRequest("SET", stateKey, JSON.stringify(snapshot));
+  if (!stateDocument) return;
+  await stateDocument.set(snapshot);
 };

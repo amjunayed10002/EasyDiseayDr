@@ -132,7 +132,6 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
   </table>
 
   <div class="footer">
-    <p>National Agriculture Helpline: 16123 (Krishi Call Center) • Always Beside the Farmer</p>
   </div>
 </body>
 </html>`;
@@ -154,7 +153,7 @@ export const AnalysisResultView: React.FC<AnalysisResultViewProps> = ({
       ? result.bangladeshMedicinesBn.join(", ")
       : result.bangladeshMedicines.join(", ");
     
-    const textToShare = `EasyDiseay Prescription:\n• Crop: ${isBn ? result.cropBn : result.crop}\n• Disease: ${isBn ? result.diseaseBn : result.disease}\n• Severity: ${severityText}\n• Treatment: ${isBn ? result.treatmentBn : result.treatment}\n• Recommended Medicines: ${medList}\n\nKrishi Helpline: 16123`;
+    const textToShare = `EasyDiseay Prescription:\n• Crop: ${isBn ? result.cropBn : result.crop}\n• Disease: ${isBn ? result.diseaseBn : result.disease}\n• Severity: ${severityText}\n• Treatment: ${isBn ? result.treatmentBn : result.treatment}\n• Recommended Medicines: ${medList}`;
 
     if (navigator.share) {
       navigator

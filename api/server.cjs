@@ -39,36 +39,31 @@ var import_dotenv2 = __toESM(require("dotenv"), 1);
 
 // serverPersistence.ts
 var import_dotenv = __toESM(require("dotenv"), 1);
+var import_app = require("firebase-admin/app");
+var import_firestore = require("firebase-admin/firestore");
 import_dotenv.default.config();
-var redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
-var redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
-var stateKey = "easydiseay:state";
-var redisRequest = async (command, ...args) => {
-  if (!redisUrl || !redisToken) return null;
-  const response = await fetch(redisUrl, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${redisToken}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify([command, ...args])
-  });
-  if (!response.ok) {
-    throw new Error(`Persistent storage request failed with HTTP ${response.status}`);
-  }
-  const payload = await response.json();
-  return payload.result;
-};
-var persistenceConfigured = Boolean(redisUrl && redisToken);
+var firestore = null;
+try {
+  const serviceAccountBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64?.trim();
+  const serviceAccount = serviceAccountBase64 ? JSON.parse(Buffer.from(serviceAccountBase64, "base64").toString("utf8")) : null;
+  const firebaseApp = serviceAccount ? (0, import_app.getApps)()[0] || (0, import_app.initializeApp)({
+    credential: (0, import_app.cert)(serviceAccount),
+    projectId: process.env.FIREBASE_PROJECT_ID?.trim() || serviceAccount.project_id
+  }) : null;
+  firestore = firebaseApp ? (0, import_firestore.getFirestore)(firebaseApp) : null;
+} catch (error) {
+  console.error("Firebase persistence initialization failed", error instanceof Error ? error.message : "Unknown error");
+}
+var stateDocument = firestore?.collection("easydiseay").doc("state") || null;
+var persistenceConfigured = Boolean(stateDocument);
 var loadPersistentSnapshot = async () => {
-  if (!persistenceConfigured) return null;
-  const value = await redisRequest("GET", stateKey);
-  if (typeof value !== "string" || !value) return null;
-  return JSON.parse(value);
+  if (!stateDocument) return null;
+  const snapshot = await stateDocument.get();
+  return snapshot.exists ? snapshot.data() : null;
 };
 var savePersistentSnapshot = async (snapshot) => {
-  if (!persistenceConfigured) return;
-  await redisRequest("SET", stateKey, JSON.stringify(snapshot));
+  if (!stateDocument) return;
+  await stateDocument.set(snapshot);
 };
 
 // server.ts
@@ -95,6 +90,18 @@ var appSettings = {
 var adminPassword = process.env.ADMIN_PASSWORD?.trim() || "admin123";
 var usersStore = [];
 var registrationRequestsStore = [];
+var supportedCropsStore = [
+  { id: "crop-cucumber", name: "Cucumber", nameBn: "\u09B6\u09B8\u09BE", imageUrl: "" },
+  { id: "crop-garlic", name: "Garlic", nameBn: "\u09B0\u09B8\u09C1\u09A8", imageUrl: "" },
+  { id: "crop-chili", name: "Chili", nameBn: "\u09AE\u09B0\u09BF\u099A", imageUrl: "" },
+  { id: "crop-potato", name: "Potato", nameBn: "\u0986\u09B2\u09C1", imageUrl: "" },
+  { id: "crop-corn", name: "Corn", nameBn: "\u09AD\u09C1\u099F\u09CD\u099F\u09BE", imageUrl: "" },
+  { id: "crop-tomato", name: "Tomato", nameBn: "\u099F\u09AE\u09C7\u099F\u09CB", imageUrl: "" },
+  { id: "crop-brinjal", name: "Brinjal", nameBn: "\u09AC\u09C7\u0997\u09C1\u09A8", imageUrl: "" },
+  { id: "crop-jute", name: "Jute", nameBn: "\u09AA\u09BE\u099F", imageUrl: "" },
+  { id: "crop-wheat", name: "Wheat", nameBn: "\u0997\u09AE", imageUrl: "" },
+  { id: "crop-rice", name: "Rice", nameBn: "\u09A7\u09BE\u09A8", imageUrl: "" }
+];
 app.get("/api/settings", (_req, res) => {
   res.json(appSettings);
 });
@@ -637,7 +644,8 @@ var createPersistentSnapshot = () => ({
   registrationRequests: registrationRequestsStore,
   analyses: analysesStore,
   medicines: medicinesStore,
-  diseases: diseasesStore
+  diseases: diseasesStore,
+  supportedCrops: supportedCropsStore
 });
 var persistState = async () => {
   if (!persistenceConfigured) return;
@@ -659,6 +667,7 @@ var loadState = async () => {
     analysesStore = snapshot.analyses;
     medicinesStore = snapshot.medicines;
     diseasesStore = snapshot.diseases;
+    if (snapshot.supportedCrops) supportedCropsStore = snapshot.supportedCrops;
   } catch (error) {
     console.error("Persistent state load failed", error instanceof Error ? error.message : "Unknown error");
   }
@@ -695,7 +704,7 @@ var checkAndPerformAutoReset = () => {
 };
 var getGeminiConfig = () => {
   const apiKey = process.env.GEMINI_API_KEY?.trim() || "";
-  const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+  const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
   return {
     apiKey,
     model,
@@ -727,7 +736,7 @@ var analysisJsonSchema = {
 };
 app.post("/api/analyze-crop", async (req, res) => {
   let requestMimeType = "unknown";
-  let geminiModel = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+  let geminiModel = process.env.GEMINI_MODEL?.trim() || "gemini-2.5-flash";
   let hasApiKey = Boolean(process.env.GEMINI_API_KEY?.trim());
   try {
     const { imageBase64, cropHint, language } = req.body;
@@ -1148,6 +1157,32 @@ app.post("/api/settings/logo", async (req, res) => {
   appSettings.customLogo = typeof req.body?.logo === "string" ? req.body.logo : "";
   await persistState();
   res.json({ success: true, customLogo: appSettings.customLogo });
+});
+app.get("/api/supported-crops", (_req, res) => {
+  res.json(supportedCropsStore);
+});
+app.post("/api/supported-crops", async (req, res) => {
+  const name = String(req.body?.name || "").trim();
+  const nameBn = String(req.body?.nameBn || "").trim();
+  if (!name || !nameBn) {
+    res.status(400).json({ error: "English and Bangla crop names are required." });
+    return;
+  }
+  const crop = {
+    id: `crop-${Date.now()}`,
+    name,
+    nameBn,
+    imageUrl: String(req.body?.imageUrl || "").trim()
+  };
+  supportedCropsStore.unshift(crop);
+  await persistState();
+  res.json({ success: true, crop });
+});
+app.delete("/api/supported-crops/:id", async (req, res) => {
+  const before = supportedCropsStore.length;
+  supportedCropsStore = supportedCropsStore.filter((crop) => crop.id !== req.params.id);
+  await persistState();
+  res.json({ success: supportedCropsStore.length < before });
 });
 app.post("/api/settings/admin-password", async (req, res) => {
   const currentPassword = String(req.body?.currentPassword || "").trim();

@@ -59,7 +59,7 @@ export const translations = {
       name: "EasyDiseay",
       copyright: "© EasyDiseay — Free Digital Crop Doctor for Bangladesh",
       tagline: "Always Beside the Farmer",
-      helpline: "National Agriculture Helpline: 16123 (Krishi Call Center)",
+      helpline: "Contact ED",
     },
     detect: {
       title: "Detect Crop Disease",
@@ -185,7 +185,7 @@ export const translations = {
       name: "EasyDiseay",
       copyright: "© EasyDiseay — বাংলাদেশের কৃষকদের জন্য উন্মুক্ত ডিজিটাল ক্রপ ডক্টর",
       tagline: "সর্বদা কৃষকের পাশে",
-      helpline: "জাতীয় কৃষি কল সেন্টার: ১৬১২৩ (সকাল ৭টা - রাত ৯টা)",
+      helpline: "Contact ED",
     },
     detect: {
       title: "Detect Crop Disease",
