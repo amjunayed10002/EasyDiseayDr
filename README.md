@@ -15,6 +15,6 @@ View your app in AI Studio: https://ai.studio/apps/3b3358f4-539f-4489-80c8-c675a
 
 1. Install dependencies:
    `npm install`
-2. Set `OPENAI_API_KEY` and `OPENAI_MODEL` in [.env.local](.env.local)
+2. Set `GEMINI_API_KEY` and `GEMINI_MODEL` in [.env.local](.env.local)
 3. Run the app:
    `npm run dev`

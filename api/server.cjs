@@ -36,7 +36,6 @@ var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_vite = require("vite");
 var import_dotenv2 = __toESM(require("dotenv"), 1);
-var import_openai = __toESM(require("openai"), 1);
 
 // serverPersistence.ts
 var import_dotenv = __toESM(require("dotenv"), 1);
@@ -694,9 +693,15 @@ var checkAndPerformAutoReset = () => {
     analyticsStore.live = createEmptyAnalyticsLiveState();
   }
 };
-var openaiApiKey = process.env.OPENAI_API_KEY?.trim();
-var openaiModel = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
-var openai = openaiApiKey ? new import_openai.default({ apiKey: openaiApiKey }) : null;
+var getGeminiConfig = () => {
+  const apiKey = process.env.GEMINI_API_KEY?.trim() || "";
+  const model = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+  return {
+    apiKey,
+    model,
+    hasApiKey: Boolean(apiKey)
+  };
+};
 var analysisJsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -722,19 +727,23 @@ var analysisJsonSchema = {
 };
 app.post("/api/analyze-crop", async (req, res) => {
   let requestMimeType = "unknown";
+  let geminiModel = process.env.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
+  let hasApiKey = Boolean(process.env.GEMINI_API_KEY?.trim());
   try {
     const { imageBase64, cropHint, language } = req.body;
     if (!imageBase64) {
       res.status(400).json({ error: "Image data is required" });
       return;
     }
-    if (!openai) {
+    const geminiConfig = getGeminiConfig();
+    geminiModel = geminiConfig.model;
+    hasApiKey = geminiConfig.hasApiKey;
+    if (!geminiConfig.apiKey) {
       res.status(503).json({ error: "AI analysis is not configured on the server." });
       return;
     }
     visitCount += 1;
     totalRequestsToday += 1;
-    let imageUrl = imageBase64;
     let mimeType = "image/jpeg";
     let base64Data = imageBase64;
     if (imageBase64.startsWith("data:")) {
@@ -742,27 +751,39 @@ app.post("/api/analyze-crop", async (req, res) => {
       const match = imageBase64.match(/^data:([^;]+);/);
       if (match) mimeType = match[1];
       base64Data = parts[1] || "";
-      imageUrl = `data:${mimeType};base64,${base64Data}`;
+    } else if (/^https?:\/\//i.test(imageBase64)) {
+      const imageResponse = await fetch(imageBase64);
+      if (!imageResponse.ok) {
+        throw new Error(`Image download failed with HTTP ${imageResponse.status}`);
+      }
+      mimeType = imageResponse.headers.get("content-type")?.split(";")[0] || mimeType;
+      base64Data = Buffer.from(await imageResponse.arrayBuffer()).toString("base64");
+    } else {
+      base64Data = imageBase64.replace(/^data:[^;]+;base64,/, "");
     }
     requestMimeType = mimeType;
-    const response = await openai.chat.completions.create({
-      model: openaiModel,
-      temperature: 0.2,
-      messages: [
-        { role: "system", content: "You are EasyDiseay's careful agricultural plant pathologist for Bangladesh. Return only the requested structured diagnosis." },
-        { role: "user", content: [
-          { type: "text", text: `Analyze this crop or plant leaf image. ${cropHint ? `The user provided crop context: "${cropHint}".` : "Identify the crop if visible."} Tailor the diagnosis to Bangladesh conditions and registered local agro-medicines. Use English for normal fields and Bangla for fields ending in Bn. The requested interface language is ${language === "bn" ? "Bangla" : "English"}.` },
-          { type: "image_url", image_url: { url: imageUrl } }
-        ] }
-      ],
-      response_format: { type: "json_schema", json_schema: { name: "crop_disease_analysis", strict: true, schema: analysisJsonSchema } }
+    const prompt = `You are EasyDiseay's careful agricultural plant pathologist for Bangladesh. Analyze this crop or plant leaf image. ${cropHint ? `The user provided crop context: "${cropHint}".` : "Identify the crop if visible."} Tailor the diagnosis to Bangladesh conditions and registered local agro-medicines. Use English for normal fields and Bangla for fields ending in Bn. The requested interface language is ${language === "bn" ? "Bangla" : "English"}. Return only valid JSON matching this schema: ${JSON.stringify(analysisJsonSchema)}`;
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent?key=${encodeURIComponent(geminiConfig.apiKey)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mimeType, data: base64Data } }] }],
+        generationConfig: { temperature: 0.2, responseMimeType: "application/json" }
+      })
     });
-    const content = response.choices[0]?.message.content;
+    if (!response.ok) {
+      const providerError = await response.text();
+      const error = new Error(`Gemini API returned HTTP ${response.status}: ${providerError.slice(0, 500)}`);
+      error.status = response.status;
+      throw error;
+    }
+    const responseBody = await response.json();
+    const content = responseBody.candidates?.[0]?.content?.parts?.map((part) => part.text || "").join("").trim();
     if (!content) {
       res.status(502).json({ error: "The AI service returned no diagnosis." });
       return;
     }
-    res.json({ analysis: JSON.parse(content) });
+    res.json({ analysis: JSON.parse(content.replace(/^```json\s*|```$/g, "").trim()) });
   } catch (error) {
     const exception = error;
     console.error("Crop analysis request failed", {
@@ -771,11 +792,14 @@ app.post("/api/analyze-crop", async (req, res) => {
       status: typeof exception.status === "number" ? exception.status : void 0,
       code: typeof exception.code === "string" ? exception.code : void 0,
       type: typeof exception.type === "string" ? exception.type : void 0,
-      model: openaiModel,
-      hasApiKey: Boolean(openaiApiKey),
+      model: geminiModel,
+      hasApiKey,
       imageMimeType: requestMimeType
     });
-    res.status(502).json({ error: "AI analysis failed on the server. Check the server logs for details." });
+    const status = typeof exception.status === "number" ? exception.status : 502;
+    const errorMessage = typeof exception.message === "string" ? exception.message.toLowerCase() : "";
+    const safeError = status === 401 || status === 403 ? "The Gemini API key was rejected. Check the Vercel GEMINI_API_KEY value." : status === 429 ? "The Gemini request was rate-limited or the account has no available quota." : errorMessage.includes("model") ? `The configured Gemini model (${geminiModel}) cannot process this image request.` : "AI analysis failed on the server. Check the Vercel runtime logs for details.";
+    res.status(502).json({ error: safeError });
   }
 });
 var cropIconMap = {
