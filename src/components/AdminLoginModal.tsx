@@ -40,16 +40,17 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         body: JSON.stringify({ password }),
       });
 
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") || "";
+      const data = contentType.includes("application/json") ? await res.json() : null;
       if (res.ok && data.success) {
         onLoginSuccess(data.token);
         setPassword("");
         onClose();
       } else {
-        setError(data.error || "Invalid administrative passcode. Try 'admin123'");
+        setError(data?.error || `Admin backend returned HTTP ${res.status}.`);
       }
-    } catch (err) {
-      setError("Login network error. Please try again.");
+    } catch {
+      setError("Cannot reach the admin backend. Check that the deployed /api route is available.");
     } finally {
       setLoading(false);
     }
@@ -86,7 +87,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-bold text-[#1B3022] mb-1">
-              Admin Passcode
+              Admin Passcode (not User Login Code)
             </label>
             <div className="relative">
               <KeyRound className="w-4 h-4 text-gray-400 absolute left-3 top-3.5" />
