@@ -19,14 +19,21 @@ import { UserLoginView } from "./components/UserLoginView";
 
 export default function App() {
   const [language, setLanguage] = useState<Language>("en");
-  const [activeView, setActiveView] = useState<"landing" | "detector" | "admin" | "nearby" | "userLogin">("landing");
+  const [activeView, setActiveView] = useState<"landing" | "detector" | "admin" | "nearby" | "userLogin">(() => {
+    const savedView = localStorage.getItem("easydiseay_active_view");
+    return savedView === "admin" || savedView === "detector" || savedView === "nearby" || savedView === "userLogin" ? savedView : "landing";
+  });
   const [adminModalOpen, setAdminModalOpen] = useState(false);
-  const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [adminToken, setAdminToken] = useState<string | null>(() => localStorage.getItem("easydiseay_admin_token"));
   const [selectedCropHint, setSelectedCropHint] = useState<string>("");
   const [securityMode, setSecurityMode] = useState<boolean>(false);
   const [userSession, setUserSession] = useState<{ userId: string; fullName: string; role?: string } | null>(null);
 
   // Sync custom logo, security mode, user session, and track page view on boot
+  useEffect(() => {
+    localStorage.setItem("easydiseay_active_view", activeView);
+  }, [activeView]);
+
   useEffect(() => {
     // Track page view event
     fetch("/api/analytics/track", {
@@ -110,12 +117,14 @@ export default function App() {
 
   const handleLoginSuccess = (token: string) => {
     setAdminToken(token);
+    localStorage.setItem("easydiseay_admin_token", token);
     setActiveView("admin");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleLogout = () => {
     setAdminToken(null);
+    localStorage.removeItem("easydiseay_admin_token");
     setActiveView("landing");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };

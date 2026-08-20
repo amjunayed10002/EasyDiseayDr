@@ -95,14 +95,11 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="admin123"
+                placeholder="Enter admin password"
                 autoFocus
                 className="w-full pl-9 pr-4 py-2.5 text-sm border border-gray-300 rounded-xl focus:border-[#1B5E20] focus:ring-2 focus:ring-emerald-200 outline-hidden font-mono"
               />
             </div>
-            <p className="text-[11px] text-[#1B5E20] mt-1 font-medium">
-              Demo passcode: <code className="bg-[#E8F5E9] text-[#1B5E20] px-1.5 py-0.5 rounded font-bold">admin123</code>
-            </p>
           </div>
 
           {error && (

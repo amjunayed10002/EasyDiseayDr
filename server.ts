@@ -3,6 +3,12 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import OpenAI from "openai";
+import {
+  loadPersistentSnapshot,
+  persistenceConfigured,
+  savePersistentSnapshot,
+  type PersistentSnapshot,
+} from "./serverPersistence";
 
 dotenv.config();
 
@@ -12,6 +18,11 @@ const PORT = Number(process.env.PORT) || 3000;
 // Middleware for parsing JSON with increased limit for base64 images
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+let stateLoadedPromise: Promise<void> = Promise.resolve();
+app.use(async (_req: Request, _res: Response, next): Promise<void> => {
+  await stateLoadedPromise;
+  next();
+});
 
 const appSettings = {
   loginRequired: false,
@@ -23,6 +34,7 @@ const appSettings = {
     displayStyle: "card_green" as "card_green" | "card_dual",
   },
 };
+let adminPassword = process.env.ADMIN_PASSWORD?.trim() || "admin123";
 
 interface RegisteredUser {
   id: string;
@@ -54,7 +66,7 @@ app.get("/api/settings", (_req: Request, res: Response): void => {
 });
 
 app.post("/api/admin/login", (req: Request, res: Response): void => {
-  if (req.body?.password !== "admin123") {
+  if (req.body?.password !== adminPassword) {
     res.status(401).json({ error: "Invalid administrative passcode." });
     return;
   }
@@ -76,7 +88,7 @@ app.post("/api/user/login", (req: Request, res: Response): void => {
   res.status(401).json({ error: "Invalid User ID or Login Code." });
 });
 
-app.post("/api/registration-requests", (req: Request, res: Response): void => {
+app.post("/api/registration-requests", async (req: Request, res: Response): Promise<void> => {
   const fullName = String(req.body?.fullName || "").trim();
   const email = String(req.body?.email || "").trim();
   if (!fullName || !email) {
@@ -93,6 +105,7 @@ app.post("/api/registration-requests", (req: Request, res: Response): void => {
     createdAt: new Date().toISOString(),
   };
   registrationRequestsStore.unshift(request);
+  await persistState();
   res.json({ success: true, request });
 });
 
@@ -607,16 +620,16 @@ let diseasesStore: DiseaseItem[] = [
     severity: "High",
     commonMedicines: ["Trooper 75 WP", "Nativo 75 WG", "Amistar Top"]
   },
-  {
-    id: "dis-4",
-    name: "Chili Leaf Curl",
-    nameBn: "মরিচের পাতা কোঁকড়ানো রোগ",
-    crop: "Chili",
-    cropBn: "মরিচ",
-    pathogen: "Begomovirus + Whitefly / Thrips vector",
-    severity: "Medium",
-    commonMedicines: ["Virtako 40 WG", "Pegasus 50 SC", "Imitaf 20 SL"]
-  },
+    {
+      id: "dis-4",
+      name: "Chili Leaf Curl & Thrips Infestation",
+      nameBn: "মরিচের পাতা কোঁকড়ানো ও থ্রিপস আক্রমণ",
+      crop: "Chili",
+      cropBn: "মরিচ",
+      pathogen: "Chili leaf curl virus transmitted by whiteflies and direct sap-sucking injury by thrips and mites.",
+      severity: "Medium",
+      commonMedicines: ["Virtako 40 WG", "Pegasus 50 SC", "Imitaf 20 SL"]
+    },
   {
     id: "dis-5",
     name: "Powdery Mildew",
@@ -638,6 +651,42 @@ let diseasesStore: DiseaseItem[] = [
     commonMedicines: ["Virtako 40 WG", "Voliam Flexi", "Proclaim 5 SG"]
   }
 ];
+
+const createPersistentSnapshot = (): PersistentSnapshot => ({
+  appSettings,
+  adminPassword,
+  users: usersStore,
+  registrationRequests: registrationRequestsStore,
+  analyses: analysesStore,
+  medicines: medicinesStore,
+  diseases: diseasesStore,
+});
+
+const persistState = async (): Promise<void> => {
+  if (!persistenceConfigured) return;
+  try {
+    await savePersistentSnapshot(createPersistentSnapshot());
+  } catch (error) {
+    console.error("Persistent state save failed", error instanceof Error ? error.message : "Unknown error");
+  }
+};
+
+const loadState = async (): Promise<void> => {
+  if (!persistenceConfigured) return;
+  try {
+    const snapshot = await loadPersistentSnapshot();
+    if (!snapshot) return;
+    Object.assign(appSettings, snapshot.appSettings);
+    adminPassword = snapshot.adminPassword || adminPassword;
+    usersStore.splice(0, usersStore.length, ...(snapshot.users as RegisteredUser[]));
+    registrationRequestsStore.splice(0, registrationRequestsStore.length, ...(snapshot.registrationRequests as RegistrationRequest[]));
+    analysesStore = snapshot.analyses as AnalysisRecord[];
+    medicinesStore = snapshot.medicines as MedicineItem[];
+    diseasesStore = snapshot.diseases as DiseaseItem[];
+  } catch (error) {
+    console.error("Persistent state load failed", error instanceof Error ? error.message : "Unknown error");
+  }
+};
 
 let visitCount = 892;
 let totalRequestsToday = 32;
@@ -1434,9 +1483,10 @@ app.get("/api/stats", (_req: Request, res: Response): void => {
   });
 });
 
-app.delete("/api/analyses/:id", (req: Request, res: Response): void => {
+app.delete("/api/analyses/:id", async (req: Request, res: Response): Promise<void> => {
   const previousLength = analysesStore.length;
   analysesStore = analysesStore.filter((analysis) => analysis.id !== req.params.id);
+  await persistState();
   res.json({ success: analysesStore.length < previousLength });
 });
 
@@ -1444,7 +1494,7 @@ app.get("/api/medicines", (_req: Request, res: Response): void => {
   res.json(medicinesStore);
 });
 
-app.post("/api/medicines", (req: Request, res: Response): void => {
+app.post("/api/medicines", async (req: Request, res: Response): Promise<void> => {
   const medicine: MedicineItem = {
     id: `med-${Date.now()}`,
     brandName: String(req.body?.brandName || "").trim(),
@@ -1461,12 +1511,14 @@ app.post("/api/medicines", (req: Request, res: Response): void => {
     return;
   }
   medicinesStore.unshift(medicine);
+  await persistState();
   res.json(medicine);
 });
 
-app.delete("/api/medicines/:id", (req: Request, res: Response): void => {
+app.delete("/api/medicines/:id", async (req: Request, res: Response): Promise<void> => {
   const previousLength = medicinesStore.length;
   medicinesStore = medicinesStore.filter((medicine) => medicine.id !== req.params.id);
+  await persistState();
   res.json({ success: medicinesStore.length < previousLength });
 });
 
@@ -1474,7 +1526,7 @@ app.get("/api/diseases", (_req: Request, res: Response): void => {
   res.json(diseasesStore);
 });
 
-app.post("/api/diseases", (req: Request, res: Response): void => {
+app.post("/api/diseases", async (req: Request, res: Response): Promise<void> => {
   const disease: DiseaseItem = {
     id: `dis-${Date.now()}`,
     name: String(req.body?.name || "").trim(),
@@ -1490,12 +1542,14 @@ app.post("/api/diseases", (req: Request, res: Response): void => {
     return;
   }
   diseasesStore.unshift(disease);
+  await persistState();
   res.json(disease);
 });
 
-app.delete("/api/diseases/:id", (req: Request, res: Response): void => {
+app.delete("/api/diseases/:id", async (req: Request, res: Response): Promise<void> => {
   const previousLength = diseasesStore.length;
   diseasesStore = diseasesStore.filter((disease) => disease.id !== req.params.id);
+  await persistState();
   res.json({ success: diseasesStore.length < previousLength });
 });
 
@@ -1503,7 +1557,7 @@ app.get("/api/users", (_req: Request, res: Response): void => {
   res.json(usersStore);
 });
 
-app.post("/api/users", (req: Request, res: Response): void => {
+app.post("/api/users", async (req: Request, res: Response): Promise<void> => {
   const userId = String(req.body?.userId || "").trim();
   const loginCode = String(req.body?.loginCode || "").trim();
   const fullName = String(req.body?.fullName || "").trim();
@@ -1527,13 +1581,15 @@ app.post("/api/users", (req: Request, res: Response): void => {
     createdAt: new Date().toISOString(),
   };
   usersStore.unshift(user);
+  await persistState();
   res.json({ success: true, user });
 });
 
-app.delete("/api/users/:id", (req: Request, res: Response): void => {
+app.delete("/api/users/:id", async (req: Request, res: Response): Promise<void> => {
   const previousLength = usersStore.length;
   const remainingUsers = usersStore.filter((user) => user.id !== req.params.id && user.userId !== req.params.id);
   usersStore.splice(0, usersStore.length, ...remainingUsers);
+  await persistState();
   res.json({ success: usersStore.length < previousLength });
 });
 
@@ -1541,32 +1597,54 @@ app.get("/api/registration-requests", (_req: Request, res: Response): void => {
   res.json(registrationRequestsStore);
 });
 
-app.delete("/api/registration-requests/:id", (req: Request, res: Response): void => {
+app.delete("/api/registration-requests/:id", async (req: Request, res: Response): Promise<void> => {
   const previousLength = registrationRequestsStore.length;
   const remainingRequests = registrationRequestsStore.filter((request) => request.id !== req.params.id);
   registrationRequestsStore.splice(0, registrationRequestsStore.length, ...remainingRequests);
+  await persistState();
   res.json({ success: registrationRequestsStore.length < previousLength });
 });
 
-app.post("/api/settings/security", (req: Request, res: Response): void => {
+app.post("/api/settings/security", async (req: Request, res: Response): Promise<void> => {
   appSettings.loginRequired = Boolean(req.body?.loginRequired);
+  await persistState();
   res.json({ success: true, loginRequired: appSettings.loginRequired });
 });
 
-app.post("/api/settings/contact", (req: Request, res: Response): void => {
+app.post("/api/settings/contact", async (req: Request, res: Response): Promise<void> => {
   appSettings.contactAdmin = {
     email: String(req.body?.email || "").trim(),
     phone: String(req.body?.phone || "").trim(),
     description: String(req.body?.description || "").trim(),
     displayStyle: req.body?.displayStyle === "card_dual" ? "card_dual" : "card_green",
   };
+  await persistState();
   res.json({ success: true, contactAdmin: appSettings.contactAdmin });
 });
 
-app.post("/api/settings/logo", (req: Request, res: Response): void => {
+app.post("/api/settings/logo", async (req: Request, res: Response): Promise<void> => {
   appSettings.customLogo = typeof req.body?.logo === "string" ? req.body.logo : "";
+  await persistState();
   res.json({ success: true, customLogo: appSettings.customLogo });
 });
+
+app.post("/api/settings/admin-password", async (req: Request, res: Response): Promise<void> => {
+  const currentPassword = String(req.body?.currentPassword || "").trim();
+  const nextPassword = String(req.body?.password || "").trim();
+  if (currentPassword !== adminPassword) {
+    res.status(401).json({ error: "Current admin password is incorrect." });
+    return;
+  }
+  if (nextPassword.length < 6) {
+    res.status(400).json({ error: "Admin password must be at least 6 characters." });
+    return;
+  }
+  adminPassword = nextPassword;
+  await persistState();
+  res.json({ success: true });
+});
+
+stateLoadedPromise = loadState();
 
 
 async function startServer() {

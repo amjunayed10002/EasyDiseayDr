@@ -98,6 +98,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     requestId: "",
   });
   const [userActionMessage, setUserActionMessage] = useState<string | null>(null);
+  const [adminPasswordInput, setAdminPasswordInput] = useState("");
+  const [currentAdminPassword, setCurrentAdminPassword] = useState("");
 
   // Contact Admin Screen Settings (Pic 1 & 2)
   const [contactAdminSettings, setContactAdminSettings] = useState<ContactAdminInfo>({
@@ -245,6 +247,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       }
     } catch (err) {
       console.error("Failed to toggle security mode:", err);
+    }
+  };
+
+  const handleChangeAdminPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch("/api/settings/admin-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: currentAdminPassword, password: adminPasswordInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setUserActionMessage(data.error || "Unable to change the admin password.");
+        return;
+      }
+      setAdminPasswordInput("");
+      setCurrentAdminPassword("");
+      setUserActionMessage("Admin password changed successfully.");
+      setTimeout(() => setUserActionMessage(null), 4000);
+    } catch {
+      setUserActionMessage("Unable to reach the admin settings service.");
     }
   };
 
@@ -1376,6 +1400,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
+            <div className="bg-white p-6 sm:p-7 rounded-2xl border border-gray-200 shadow-xs space-y-4">
+              <div className="flex items-center gap-2.5 text-[#1E7743] border-b border-gray-100 pb-3">
+                <KeyRound className="w-5 h-5 text-[#1E7743]" />
+                <h3 className="text-base font-bold text-gray-900">Change Admin Login Password</h3>
+              </div>
+              <form onSubmit={handleChangeAdminPassword} className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="password"
+                  required
+                  value={currentAdminPassword}
+                  onChange={(e) => setCurrentAdminPassword(e.target.value)}
+                  placeholder="Current password"
+                  className="flex-1 p-2.5 border border-gray-200 rounded-xl font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+                <input
+                  type="password"
+                  minLength={6}
+                  required
+                  value={adminPasswordInput}
+                  onChange={(e) => setAdminPasswordInput(e.target.value)}
+                  placeholder="Enter a new password"
+                  className="flex-1 p-2.5 border border-gray-200 rounded-xl font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                />
+                <button type="submit" className="px-5 py-2.5 bg-[#146C3D] hover:bg-[#0E522C] text-white font-bold rounded-xl cursor-pointer shadow-xs">
+                  Change Password
+                </button>
+              </form>
+            </div>
+
             {/* Contact Admin Screen Settings (For Picture 1 & 2 "Forget login code" screen) */}
             <div className="bg-white p-6 sm:p-7 rounded-2xl border border-gray-200 shadow-xs space-y-5">
               <div className="flex items-center justify-between border-b border-gray-100 pb-3">
@@ -1451,9 +1504,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </label>
 
                     <label
-                      onClick={() => setContactAdminSettings({ ...contactAdminSettings, displayStyle: "dual_items" })}
+                      onClick={() => setContactAdminSettings({ ...contactAdminSettings, displayStyle: "card_dual" })}
                       className={`p-3.5 rounded-xl border-2 flex items-center gap-3 cursor-pointer transition-all ${
-                        contactAdminSettings.displayStyle === "dual_items"
+                        contactAdminSettings.displayStyle === "card_dual"
                           ? "border-emerald-600 bg-emerald-50/50"
                           : "border-gray-200 hover:border-gray-300"
                       }`}
@@ -1461,8 +1514,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <input
                         type="radio"
                         name="displayStyle"
-                        checked={contactAdminSettings.displayStyle === "dual_items"}
-                        onChange={() => setContactAdminSettings({ ...contactAdminSettings, displayStyle: "dual_items" })}
+                        checked={contactAdminSettings.displayStyle === "card_dual"}
+                        onChange={() => setContactAdminSettings({ ...contactAdminSettings, displayStyle: "card_dual" })}
                         className="text-emerald-600"
                       />
                       <div>

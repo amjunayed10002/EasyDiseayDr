@@ -35,13 +35,54 @@ module.exports = __toCommonJS(server_exports);
 var import_express = __toESM(require("express"), 1);
 var import_path = __toESM(require("path"), 1);
 var import_vite = require("vite");
-var import_dotenv = __toESM(require("dotenv"), 1);
+var import_dotenv2 = __toESM(require("dotenv"), 1);
 var import_openai = __toESM(require("openai"), 1);
+
+// serverPersistence.ts
+var import_dotenv = __toESM(require("dotenv"), 1);
 import_dotenv.default.config();
+var redisUrl = process.env.UPSTASH_REDIS_REST_URL?.trim();
+var redisToken = process.env.UPSTASH_REDIS_REST_TOKEN?.trim();
+var stateKey = "easydiseay:state";
+var redisRequest = async (command, ...args) => {
+  if (!redisUrl || !redisToken) return null;
+  const response = await fetch(redisUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${redisToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify([command, ...args])
+  });
+  if (!response.ok) {
+    throw new Error(`Persistent storage request failed with HTTP ${response.status}`);
+  }
+  const payload = await response.json();
+  return payload.result;
+};
+var persistenceConfigured = Boolean(redisUrl && redisToken);
+var loadPersistentSnapshot = async () => {
+  if (!persistenceConfigured) return null;
+  const value = await redisRequest("GET", stateKey);
+  if (typeof value !== "string" || !value) return null;
+  return JSON.parse(value);
+};
+var savePersistentSnapshot = async (snapshot) => {
+  if (!persistenceConfigured) return;
+  await redisRequest("SET", stateKey, JSON.stringify(snapshot));
+};
+
+// server.ts
+import_dotenv2.default.config();
 var app = (0, import_express.default)();
 var PORT = Number(process.env.PORT) || 3e3;
 app.use(import_express.default.json({ limit: "50mb" }));
 app.use(import_express.default.urlencoded({ extended: true, limit: "50mb" }));
+var stateLoadedPromise = Promise.resolve();
+app.use(async (_req, _res, next) => {
+  await stateLoadedPromise;
+  next();
+});
 var appSettings = {
   loginRequired: false,
   customLogo: "",
@@ -52,13 +93,14 @@ var appSettings = {
     displayStyle: "card_green"
   }
 };
+var adminPassword = process.env.ADMIN_PASSWORD?.trim() || "admin123";
 var usersStore = [];
 var registrationRequestsStore = [];
 app.get("/api/settings", (_req, res) => {
   res.json(appSettings);
 });
 app.post("/api/admin/login", (req, res) => {
-  if (req.body?.password !== "admin123") {
+  if (req.body?.password !== adminPassword) {
     res.status(401).json({ error: "Invalid administrative passcode." });
     return;
   }
@@ -78,7 +120,7 @@ app.post("/api/user/login", (req, res) => {
   }
   res.status(401).json({ error: "Invalid User ID or Login Code." });
 });
-app.post("/api/registration-requests", (req, res) => {
+app.post("/api/registration-requests", async (req, res) => {
   const fullName = String(req.body?.fullName || "").trim();
   const email = String(req.body?.email || "").trim();
   if (!fullName || !email) {
@@ -95,6 +137,7 @@ app.post("/api/registration-requests", (req, res) => {
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
   };
   registrationRequestsStore.unshift(request);
+  await persistState();
   res.json({ success: true, request });
 });
 app.post("/api/analytics/track", (_req, res) => {
@@ -559,11 +602,11 @@ var diseasesStore = [
   },
   {
     id: "dis-4",
-    name: "Chili Leaf Curl",
-    nameBn: "\u09AE\u09B0\u09BF\u099A\u09C7\u09B0 \u09AA\u09BE\u09A4\u09BE \u0995\u09CB\u0981\u0995\u09DC\u09BE\u09A8\u09CB \u09B0\u09CB\u0997",
+    name: "Chili Leaf Curl & Thrips Infestation",
+    nameBn: "\u09AE\u09B0\u09BF\u099A\u09C7\u09B0 \u09AA\u09BE\u09A4\u09BE \u0995\u09CB\u0981\u0995\u09DC\u09BE\u09A8\u09CB \u0993 \u09A5\u09CD\u09B0\u09BF\u09AA\u09B8 \u0986\u0995\u09CD\u09B0\u09AE\u09A3",
     crop: "Chili",
     cropBn: "\u09AE\u09B0\u09BF\u099A",
-    pathogen: "Begomovirus + Whitefly / Thrips vector",
+    pathogen: "Chili leaf curl virus transmitted by whiteflies and direct sap-sucking injury by thrips and mites.",
     severity: "Medium",
     commonMedicines: ["Virtako 40 WG", "Pegasus 50 SC", "Imitaf 20 SL"]
   },
@@ -588,6 +631,39 @@ var diseasesStore = [
     commonMedicines: ["Virtako 40 WG", "Voliam Flexi", "Proclaim 5 SG"]
   }
 ];
+var createPersistentSnapshot = () => ({
+  appSettings,
+  adminPassword,
+  users: usersStore,
+  registrationRequests: registrationRequestsStore,
+  analyses: analysesStore,
+  medicines: medicinesStore,
+  diseases: diseasesStore
+});
+var persistState = async () => {
+  if (!persistenceConfigured) return;
+  try {
+    await savePersistentSnapshot(createPersistentSnapshot());
+  } catch (error) {
+    console.error("Persistent state save failed", error instanceof Error ? error.message : "Unknown error");
+  }
+};
+var loadState = async () => {
+  if (!persistenceConfigured) return;
+  try {
+    const snapshot = await loadPersistentSnapshot();
+    if (!snapshot) return;
+    Object.assign(appSettings, snapshot.appSettings);
+    adminPassword = snapshot.adminPassword || adminPassword;
+    usersStore.splice(0, usersStore.length, ...snapshot.users);
+    registrationRequestsStore.splice(0, registrationRequestsStore.length, ...snapshot.registrationRequests);
+    analysesStore = snapshot.analyses;
+    medicinesStore = snapshot.medicines;
+    diseasesStore = snapshot.diseases;
+  } catch (error) {
+    console.error("Persistent state load failed", error instanceof Error ? error.message : "Unknown error");
+  }
+};
 var visitCount = 892;
 var totalRequestsToday = 32;
 var TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1e3;
@@ -919,15 +995,16 @@ app.get("/api/stats", (_req, res) => {
     totalUsers: usersStore.length
   });
 });
-app.delete("/api/analyses/:id", (req, res) => {
+app.delete("/api/analyses/:id", async (req, res) => {
   const previousLength = analysesStore.length;
   analysesStore = analysesStore.filter((analysis) => analysis.id !== req.params.id);
+  await persistState();
   res.json({ success: analysesStore.length < previousLength });
 });
 app.get("/api/medicines", (_req, res) => {
   res.json(medicinesStore);
 });
-app.post("/api/medicines", (req, res) => {
+app.post("/api/medicines", async (req, res) => {
   const medicine = {
     id: `med-${Date.now()}`,
     brandName: String(req.body?.brandName || "").trim(),
@@ -944,17 +1021,19 @@ app.post("/api/medicines", (req, res) => {
     return;
   }
   medicinesStore.unshift(medicine);
+  await persistState();
   res.json(medicine);
 });
-app.delete("/api/medicines/:id", (req, res) => {
+app.delete("/api/medicines/:id", async (req, res) => {
   const previousLength = medicinesStore.length;
   medicinesStore = medicinesStore.filter((medicine) => medicine.id !== req.params.id);
+  await persistState();
   res.json({ success: medicinesStore.length < previousLength });
 });
 app.get("/api/diseases", (_req, res) => {
   res.json(diseasesStore);
 });
-app.post("/api/diseases", (req, res) => {
+app.post("/api/diseases", async (req, res) => {
   const disease = {
     id: `dis-${Date.now()}`,
     name: String(req.body?.name || "").trim(),
@@ -970,17 +1049,19 @@ app.post("/api/diseases", (req, res) => {
     return;
   }
   diseasesStore.unshift(disease);
+  await persistState();
   res.json(disease);
 });
-app.delete("/api/diseases/:id", (req, res) => {
+app.delete("/api/diseases/:id", async (req, res) => {
   const previousLength = diseasesStore.length;
   diseasesStore = diseasesStore.filter((disease) => disease.id !== req.params.id);
+  await persistState();
   res.json({ success: diseasesStore.length < previousLength });
 });
 app.get("/api/users", (_req, res) => {
   res.json(usersStore);
 });
-app.post("/api/users", (req, res) => {
+app.post("/api/users", async (req, res) => {
   const userId = String(req.body?.userId || "").trim();
   const loginCode = String(req.body?.loginCode || "").trim();
   const fullName = String(req.body?.fullName || "").trim();
@@ -1004,40 +1085,62 @@ app.post("/api/users", (req, res) => {
     createdAt: (/* @__PURE__ */ new Date()).toISOString()
   };
   usersStore.unshift(user);
+  await persistState();
   res.json({ success: true, user });
 });
-app.delete("/api/users/:id", (req, res) => {
+app.delete("/api/users/:id", async (req, res) => {
   const previousLength = usersStore.length;
   const remainingUsers = usersStore.filter((user) => user.id !== req.params.id && user.userId !== req.params.id);
   usersStore.splice(0, usersStore.length, ...remainingUsers);
+  await persistState();
   res.json({ success: usersStore.length < previousLength });
 });
 app.get("/api/registration-requests", (_req, res) => {
   res.json(registrationRequestsStore);
 });
-app.delete("/api/registration-requests/:id", (req, res) => {
+app.delete("/api/registration-requests/:id", async (req, res) => {
   const previousLength = registrationRequestsStore.length;
   const remainingRequests = registrationRequestsStore.filter((request) => request.id !== req.params.id);
   registrationRequestsStore.splice(0, registrationRequestsStore.length, ...remainingRequests);
+  await persistState();
   res.json({ success: registrationRequestsStore.length < previousLength });
 });
-app.post("/api/settings/security", (req, res) => {
+app.post("/api/settings/security", async (req, res) => {
   appSettings.loginRequired = Boolean(req.body?.loginRequired);
+  await persistState();
   res.json({ success: true, loginRequired: appSettings.loginRequired });
 });
-app.post("/api/settings/contact", (req, res) => {
+app.post("/api/settings/contact", async (req, res) => {
   appSettings.contactAdmin = {
     email: String(req.body?.email || "").trim(),
     phone: String(req.body?.phone || "").trim(),
     description: String(req.body?.description || "").trim(),
     displayStyle: req.body?.displayStyle === "card_dual" ? "card_dual" : "card_green"
   };
+  await persistState();
   res.json({ success: true, contactAdmin: appSettings.contactAdmin });
 });
-app.post("/api/settings/logo", (req, res) => {
+app.post("/api/settings/logo", async (req, res) => {
   appSettings.customLogo = typeof req.body?.logo === "string" ? req.body.logo : "";
+  await persistState();
   res.json({ success: true, customLogo: appSettings.customLogo });
 });
+app.post("/api/settings/admin-password", async (req, res) => {
+  const currentPassword = String(req.body?.currentPassword || "").trim();
+  const nextPassword = String(req.body?.password || "").trim();
+  if (currentPassword !== adminPassword) {
+    res.status(401).json({ error: "Current admin password is incorrect." });
+    return;
+  }
+  if (nextPassword.length < 6) {
+    res.status(400).json({ error: "Admin password must be at least 6 characters." });
+    return;
+  }
+  adminPassword = nextPassword;
+  await persistState();
+  res.json({ success: true });
+});
+stateLoadedPromise = loadState();
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const vite = await (0, import_vite.createServer)({
