@@ -52,6 +52,8 @@ var appSettings = {
     displayStyle: "card_green"
   }
 };
+var usersStore = [];
+var registrationRequestsStore = [];
 app.get("/api/settings", (_req, res) => {
   res.json(appSettings);
 });
@@ -65,11 +67,35 @@ app.post("/api/admin/login", (req, res) => {
 app.post("/api/user/login", (req, res) => {
   const userId = String(req.body?.userId || "").trim();
   const loginCode = String(req.body?.loginCode || "").trim();
+  const registeredUser = usersStore.find((user) => user.userId === userId && user.loginCode === loginCode && user.status === "Active");
+  if (registeredUser) {
+    res.json({ success: true, user: registeredUser });
+    return;
+  }
   if (userId === "948210" && loginCode === "948210") {
     res.json({ success: true, user: { userId, fullName: "EasyDiseay User", role: "user" } });
     return;
   }
   res.status(401).json({ error: "Invalid User ID or Login Code." });
+});
+app.post("/api/registration-requests", (req, res) => {
+  const fullName = String(req.body?.fullName || "").trim();
+  const email = String(req.body?.email || "").trim();
+  if (!fullName || !email) {
+    res.status(400).json({ error: "Full name and email are required." });
+    return;
+  }
+  const request = {
+    id: `req-${Date.now()}`,
+    fullName,
+    email,
+    phone: String(req.body?.phone || "").trim(),
+    notes: String(req.body?.notes || "").trim(),
+    status: "pending",
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  registrationRequestsStore.unshift(request);
+  res.json({ success: true, request });
 });
 app.post("/api/analytics/track", (_req, res) => {
   res.json({ success: true });
@@ -410,6 +436,158 @@ var analysesStore = [
     ]
   }
 ];
+var medicinesStore = [
+  {
+    id: "med-1",
+    brandName: "Antracol 70 WP",
+    genericName: "Propineb 70%",
+    company: "Bayer CropScience Ltd.",
+    targetDiseases: ["Early Blight", "Late Blight", "Leaf Spot", "Anthracnose"],
+    cropTypes: ["Tomato", "Potato", "Chili", "Cucumber"],
+    dosage: "2 grams per 1 Liter of clean water",
+    dosageBn: "\u09AA\u09CD\u09B0\u09A4\u09BF \u09E7 \u09B2\u09BF\u099F\u09BE\u09B0 \u09AA\u09B0\u09BF\u09B7\u09CD\u0995\u09BE\u09B0 \u09AA\u09BE\u09A8\u09BF\u09A4\u09C7 \u09E8 \u0997\u09CD\u09B0\u09BE\u09AE",
+    packSize: "100g, 500g, 1kg"
+  },
+  {
+    id: "med-2",
+    brandName: "Score 250 EC",
+    genericName: "Difenoconazole 250 g/L",
+    company: "Syngenta Bangladesh Ltd.",
+    targetDiseases: ["Leaf Spot", "Purple Blotch", "Early Blight", "Sheath Blight"],
+    cropTypes: ["Tomato", "Chili", "Garlic", "Rice", "Wheat"],
+    dosage: "0.5 ml per 1 Liter of water (10 ml per 20L sprayer)",
+    dosageBn: "\u09AA\u09CD\u09B0\u09A4\u09BF \u09E7 \u09B2\u09BF\u099F\u09BE\u09B0 \u09AA\u09BE\u09A8\u09BF\u09A4\u09C7 \u09E6.\u09EB \u09AE\u09BF\u09B2\u09BF (\u09E8\u09E6 \u09B2\u09BF\u099F\u09BE\u09B0 \u09B8\u09CD\u09AA\u09CD\u09B0\u09C7\u09DF\u09BE\u09B0\u09C7 \u09E7\u09E6 \u09AE\u09BF\u09B2\u09BF)",
+    packSize: "50ml, 100ml, 250ml"
+  },
+  {
+    id: "med-3",
+    brandName: "Ridomil Gold MZ 68 WG",
+    genericName: "Mefenoxam 4% + Mancozeb 64%",
+    company: "Syngenta Bangladesh Ltd.",
+    targetDiseases: ["Late Blight", "Downy Mildew", "Damping Off"],
+    cropTypes: ["Potato", "Tomato", "Cucumber", "Brinjal"],
+    dosage: "2 grams per 1 Liter of water",
+    dosageBn: "\u09AA\u09CD\u09B0\u09A4\u09BF \u09E7 \u09B2\u09BF\u099F\u09BE\u09B0 \u09AA\u09BE\u09A8\u09BF\u09A4\u09C7 \u09E8 \u0997\u09CD\u09B0\u09BE\u09AE",
+    packSize: "100g, 500g"
+  },
+  {
+    id: "med-4",
+    brandName: "Nativo 75 WG",
+    genericName: "Tebuconazole 50% + Trifloxystrobin 25%",
+    company: "Bayer CropScience Ltd.",
+    targetDiseases: ["Rice Blast", "Sheath Blight", "Early Blight", "Anthracnose"],
+    cropTypes: ["Rice", "Tomato", "Chili", "Wheat", "Corn"],
+    dosage: "0.6 grams per 1 Liter of water",
+    dosageBn: "\u09AA\u09CD\u09B0\u09A4\u09BF \u09E7 \u09B2\u09BF\u099F\u09BE\u09B0 \u09AA\u09BE\u09A8\u09BF\u09A4\u09C7 \u09E6.\u09EC \u0997\u09CD\u09B0\u09BE\u09AE",
+    packSize: "10g, 50g, 100g"
+  },
+  {
+    id: "med-5",
+    brandName: "Virtako 40 WG",
+    genericName: "Chlorantraniliprole 20% + Thiamethoxam 20%",
+    company: "Syngenta Bangladesh Ltd.",
+    targetDiseases: ["Stem Borer", "Leaf Folder", "Thrips", "Whitefly"],
+    cropTypes: ["Rice", "Chili", "Brinjal", "Corn"],
+    dosage: "1.5 grams per 10 Liters of water",
+    dosageBn: "\u09AA\u09CD\u09B0\u09A4\u09BF \u09E7\u09E6 \u09B2\u09BF\u099F\u09BE\u09B0 \u09AA\u09BE\u09A8\u09BF\u09A4\u09C7 \u09E7.\u09EB \u0997\u09CD\u09B0\u09BE\u09AE",
+    packSize: "10g, 20g, 75g"
+  },
+  {
+    id: "med-6",
+    brandName: "Amistar Top 325 SC",
+    genericName: "Azoxystrobin 200 g/L + Difenoconazole 125 g/L",
+    company: "Syngenta Bangladesh Ltd.",
+    targetDiseases: ["Rice Blast", "Gray Leaf Spot", "Purple Blotch", "Early Blight"],
+    cropTypes: ["Rice", "Corn", "Garlic", "Potato", "Tomato"],
+    dosage: "1 ml per 1 Liter of water",
+    dosageBn: "\u09AA\u09CD\u09B0\u09A4\u09BF \u09E7 \u09B2\u09BF\u099F\u09BE\u09B0 \u09AA\u09BE\u09A8\u09BF\u09A4\u09C7 \u09E7 \u09AE\u09BF\u09B2\u09BF",
+    packSize: "50ml, 100ml, 250ml"
+  },
+  {
+    id: "med-7",
+    brandName: "Bavistin 50 WP / DF",
+    genericName: "Carbendazim 50%",
+    company: "ACI Formulations Ltd.",
+    targetDiseases: ["Seed Borne Diseases", "Anthracnose", "Die-back", "Powdery Mildew"],
+    cropTypes: ["Jute", "Wheat", "Vegetables", "Chili"],
+    dosage: "1 to 1.5 grams per 1 Liter of water / 2.5g per 1kg seed treatment",
+    dosageBn: "\u09AA\u09CD\u09B0\u09A4\u09BF \u09E7 \u09B2\u09BF\u099F\u09BE\u09B0 \u09AA\u09BE\u09A8\u09BF\u09A4\u09C7 \u09E7 \u09A5\u09C7\u0995\u09C7 \u09E7.\u09EB \u0997\u09CD\u09B0\u09BE\u09AE / \u09AC\u09C0\u099C \u09B6\u09CB\u09A7\u09A8\u09C7 \u09E8.\u09EB \u0997\u09CD\u09B0\u09BE\u09AE/\u0995\u09C7\u099C\u09BF",
+    packSize: "100g, 500g"
+  },
+  {
+    id: "med-8",
+    brandName: "Tilt 250 EC",
+    genericName: "Propiconazole 250 g/L",
+    company: "Syngenta Bangladesh Ltd.",
+    targetDiseases: ["Sheath Blight", "Rust", "Leaf Spot", "Powdery Mildew"],
+    cropTypes: ["Rice", "Wheat", "Corn", "Cucumber"],
+    dosage: "0.5 ml per 1 Liter of water",
+    dosageBn: "\u09AA\u09CD\u09B0\u09A4\u09BF \u09E7 \u09B2\u09BF\u099F\u09BE\u09B0 \u09AA\u09BE\u09A8\u09BF\u09A4\u09C7 \u09E6.\u09EB \u09AE\u09BF\u09B2\u09BF",
+    packSize: "50ml, 100ml, 250ml"
+  }
+];
+var diseasesStore = [
+  {
+    id: "dis-1",
+    name: "Early Blight",
+    nameBn: "\u0986\u0997\u09BE\u09AE \u09A7\u09CD\u09AC\u09B8\u09BE \u09B0\u09CB\u0997 (\u0986\u09B0\u09CD\u09B2\u09BF \u09AC\u09CD\u09B2\u09BE\u0987\u099F)",
+    crop: "Tomato",
+    cropBn: "\u099F\u09AE\u09C7\u099F\u09CB",
+    pathogen: "Alternaria solani (Fungus)",
+    severity: "High",
+    commonMedicines: ["Antracol 70 WP", "Score 250 EC", "Ridomil Gold"]
+  },
+  {
+    id: "dis-2",
+    name: "Late Blight",
+    nameBn: "\u09A8\u09BE\u09AC\u09C0 \u09A7\u09CD\u09AC\u09B8\u09BE \u09B0\u09CB\u0997 (\u09B2\u09C7\u099F \u09AC\u09CD\u09B2\u09BE\u0987\u099F)",
+    crop: "Potato",
+    cropBn: "\u0986\u09B2\u09C1",
+    pathogen: "Phytophthora infestans (Oomycete)",
+    severity: "High",
+    commonMedicines: ["Ridomil Gold MZ", "Acrobat MZ", "Secure 600 WG"]
+  },
+  {
+    id: "dis-3",
+    name: "Rice Blast",
+    nameBn: "\u09A7\u09BE\u09A8\u09C7\u09B0 \u09AC\u09CD\u09B2\u09BE\u09B8\u09CD\u099F \u09B0\u09CB\u0997",
+    crop: "Rice",
+    cropBn: "\u09A7\u09BE\u09A8",
+    pathogen: "Magnaporthe oryzae (Fungus)",
+    severity: "High",
+    commonMedicines: ["Trooper 75 WP", "Nativo 75 WG", "Amistar Top"]
+  },
+  {
+    id: "dis-4",
+    name: "Chili Leaf Curl",
+    nameBn: "\u09AE\u09B0\u09BF\u099A\u09C7\u09B0 \u09AA\u09BE\u09A4\u09BE \u0995\u09CB\u0981\u0995\u09DC\u09BE\u09A8\u09CB \u09B0\u09CB\u0997",
+    crop: "Chili",
+    cropBn: "\u09AE\u09B0\u09BF\u099A",
+    pathogen: "Begomovirus + Whitefly / Thrips vector",
+    severity: "Medium",
+    commonMedicines: ["Virtako 40 WG", "Pegasus 50 SC", "Imitaf 20 SL"]
+  },
+  {
+    id: "dis-5",
+    name: "Powdery Mildew",
+    nameBn: "\u09AA\u09BE\u0989\u09A1\u09BE\u09B0\u09BF \u09AE\u09BF\u09B2\u09A1\u09BF\u0989",
+    crop: "Cucumber",
+    cropBn: "\u09B6\u09B8\u09BE",
+    pathogen: "Podosphaera xanthii (Fungus)",
+    severity: "Medium",
+    commonMedicines: ["Kumulus DF", "Topas 100 EC", "Tilt 250 EC"]
+  },
+  {
+    id: "dis-6",
+    name: "Shoot and Fruit Borer",
+    nameBn: "\u09A1\u0997\u09BE \u0993 \u09AB\u09B2 \u099B\u09BF\u09A6\u09CD\u09B0\u0995\u09BE\u09B0\u09C0 \u09AA\u09CB\u0995\u09BE",
+    crop: "Brinjal",
+    cropBn: "\u09AC\u09C7\u0997\u09C1\u09A8",
+    pathogen: "Leucinodes orbonalis (Insect pest)",
+    severity: "High",
+    commonMedicines: ["Virtako 40 WG", "Voliam Flexi", "Proclaim 5 SG"]
+  }
+];
 var visitCount = 892;
 var totalRequestsToday = 32;
 var TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1e3;
@@ -440,7 +618,9 @@ var checkAndPerformAutoReset = () => {
     analyticsStore.live = createEmptyAnalyticsLiveState();
   }
 };
-var openai = process.env.OPENAI_API_KEY ? new import_openai.default({ apiKey: process.env.OPENAI_API_KEY }) : null;
+var openaiApiKey = process.env.OPENAI_API_KEY?.trim();
+var openaiModel = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+var openai = openaiApiKey ? new import_openai.default({ apiKey: openaiApiKey }) : null;
 var analysisJsonSchema = {
   type: "object",
   additionalProperties: false,
@@ -465,6 +645,7 @@ var analysisJsonSchema = {
   required: ["crop", "cropBn", "disease", "diseaseBn", "confidence", "confidenceBn", "symptoms", "symptomsBn", "causes", "causesBn", "treatment", "treatmentBn", "bangladeshMedicines", "bangladeshMedicinesBn", "preventionTips", "preventionTipsBn"]
 };
 app.post("/api/analyze-crop", async (req, res) => {
+  let requestMimeType = "unknown";
   try {
     const { imageBase64, cropHint, language } = req.body;
     if (!imageBase64) {
@@ -487,8 +668,9 @@ app.post("/api/analyze-crop", async (req, res) => {
       base64Data = parts[1] || "";
       imageUrl = `data:${mimeType};base64,${base64Data}`;
     }
+    requestMimeType = mimeType;
     const response = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      model: openaiModel,
       temperature: 0.2,
       messages: [
         { role: "system", content: "You are EasyDiseay's careful agricultural plant pathologist for Bangladesh. Return only the requested structured diagnosis." },
@@ -505,9 +687,19 @@ app.post("/api/analyze-crop", async (req, res) => {
       return;
     }
     res.json({ analysis: JSON.parse(content) });
-  } catch {
-    console.error("Crop analysis request failed.");
-    res.status(500).json({ error: "Unable to analyze the crop image right now." });
+  } catch (error) {
+    const exception = error;
+    console.error("Crop analysis request failed", {
+      name: typeof exception.name === "string" ? exception.name : "UnknownError",
+      message: typeof exception.message === "string" ? exception.message : "Unknown error",
+      status: typeof exception.status === "number" ? exception.status : void 0,
+      code: typeof exception.code === "string" ? exception.code : void 0,
+      type: typeof exception.type === "string" ? exception.type : void 0,
+      model: openaiModel,
+      hasApiKey: Boolean(openaiApiKey),
+      imageMimeType: requestMimeType
+    });
+    res.status(502).json({ error: "AI analysis failed on the server. Check the server logs for details." });
   }
 });
 var cropIconMap = {
@@ -715,6 +907,126 @@ app.post("/api/analytics/reset", (req, res) => {
     message: resetType === "full" ? "All website traffic and search analytics have been reset." : "Current 24-hour cycle analytics counter has been reset.",
     nextResetAt: analyticsStore.nextResetAt
   });
+});
+app.get("/api/analyses", (_req, res) => {
+  res.json({ data: analysesStore });
+});
+app.get("/api/stats", (_req, res) => {
+  res.json({
+    totalAnalyses: analysesStore.length,
+    totalImages: analysesStore.filter((analysis) => Boolean(analysis.imageUrl)).length,
+    todayAnalyses: totalRequestsToday,
+    totalUsers: usersStore.length
+  });
+});
+app.delete("/api/analyses/:id", (req, res) => {
+  const previousLength = analysesStore.length;
+  analysesStore = analysesStore.filter((analysis) => analysis.id !== req.params.id);
+  res.json({ success: analysesStore.length < previousLength });
+});
+app.get("/api/medicines", (_req, res) => {
+  res.json(medicinesStore);
+});
+app.post("/api/medicines", (req, res) => {
+  const medicine = {
+    id: `med-${Date.now()}`,
+    brandName: String(req.body?.brandName || "").trim(),
+    genericName: String(req.body?.genericName || "").trim(),
+    company: String(req.body?.company || "").trim(),
+    targetDiseases: Array.isArray(req.body?.targetDiseases) ? req.body.targetDiseases : [],
+    cropTypes: Array.isArray(req.body?.cropTypes) ? req.body.cropTypes : [],
+    dosage: String(req.body?.dosage || "").trim(),
+    dosageBn: String(req.body?.dosageBn || "").trim(),
+    packSize: String(req.body?.packSize || "").trim()
+  };
+  if (!medicine.brandName || !medicine.genericName) {
+    res.status(400).json({ error: "Brand name and generic name are required." });
+    return;
+  }
+  medicinesStore.unshift(medicine);
+  res.json(medicine);
+});
+app.get("/api/diseases", (_req, res) => {
+  res.json(diseasesStore);
+});
+app.post("/api/diseases", (req, res) => {
+  const disease = {
+    id: `dis-${Date.now()}`,
+    name: String(req.body?.name || "").trim(),
+    nameBn: String(req.body?.nameBn || "").trim(),
+    crop: String(req.body?.crop || "").trim(),
+    cropBn: String(req.body?.cropBn || "").trim(),
+    pathogen: String(req.body?.pathogen || "").trim(),
+    severity: req.body?.severity === "Low" || req.body?.severity === "Medium" ? req.body.severity : "High",
+    commonMedicines: Array.isArray(req.body?.commonMedicines) ? req.body.commonMedicines : []
+  };
+  if (!disease.name || !disease.crop) {
+    res.status(400).json({ error: "Disease name and crop are required." });
+    return;
+  }
+  diseasesStore.unshift(disease);
+  res.json(disease);
+});
+app.get("/api/users", (_req, res) => {
+  res.json(usersStore);
+});
+app.post("/api/users", (req, res) => {
+  const userId = String(req.body?.userId || "").trim();
+  const loginCode = String(req.body?.loginCode || "").trim();
+  const fullName = String(req.body?.fullName || "").trim();
+  if (!userId || !loginCode || !fullName) {
+    res.status(400).json({ error: "User ID, login code, and full name are required." });
+    return;
+  }
+  if (usersStore.some((user2) => user2.userId === userId)) {
+    res.status(409).json({ error: "That user ID is already registered." });
+    return;
+  }
+  const user = {
+    id: `user-${Date.now()}`,
+    userId,
+    loginCode,
+    fullName,
+    email: String(req.body?.email || "").trim(),
+    phone: String(req.body?.phone || "").trim(),
+    role: String(req.body?.role || "Registered Farmer").trim(),
+    status: "Active",
+    createdAt: (/* @__PURE__ */ new Date()).toISOString()
+  };
+  usersStore.unshift(user);
+  res.json({ success: true, user });
+});
+app.delete("/api/users/:id", (req, res) => {
+  const previousLength = usersStore.length;
+  const remainingUsers = usersStore.filter((user) => user.id !== req.params.id && user.userId !== req.params.id);
+  usersStore.splice(0, usersStore.length, ...remainingUsers);
+  res.json({ success: usersStore.length < previousLength });
+});
+app.get("/api/registration-requests", (_req, res) => {
+  res.json(registrationRequestsStore);
+});
+app.delete("/api/registration-requests/:id", (req, res) => {
+  const previousLength = registrationRequestsStore.length;
+  const remainingRequests = registrationRequestsStore.filter((request) => request.id !== req.params.id);
+  registrationRequestsStore.splice(0, registrationRequestsStore.length, ...remainingRequests);
+  res.json({ success: registrationRequestsStore.length < previousLength });
+});
+app.post("/api/settings/security", (req, res) => {
+  appSettings.loginRequired = Boolean(req.body?.loginRequired);
+  res.json({ success: true, loginRequired: appSettings.loginRequired });
+});
+app.post("/api/settings/contact", (req, res) => {
+  appSettings.contactAdmin = {
+    email: String(req.body?.email || "").trim(),
+    phone: String(req.body?.phone || "").trim(),
+    description: String(req.body?.description || "").trim(),
+    displayStyle: req.body?.displayStyle === "card_dual" ? "card_dual" : "card_green"
+  };
+  res.json({ success: true, contactAdmin: appSettings.contactAdmin });
+});
+app.post("/api/settings/logo", (req, res) => {
+  appSettings.customLogo = typeof req.body?.logo === "string" ? req.body.logo : "";
+  res.json({ success: true, customLogo: appSettings.customLogo });
 });
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {

@@ -20,9 +20,34 @@ const appSettings = {
     email: "315222057@hamdarduniversity.edu.bd",
     phone: "+880123456789",
     description: "Forget anything send us email with mention your User ID",
-    displayStyle: "card_green" as const,
+    displayStyle: "card_green" as "card_green" | "card_dual",
   },
 };
+
+interface RegisteredUser {
+  id: string;
+  userId: string;
+  loginCode: string;
+  fullName: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  status: "Active" | "Pending" | "Suspended";
+  createdAt: string;
+}
+
+interface RegistrationRequest {
+  id: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+  notes?: string;
+  status: "pending" | "approved" | "rejected";
+  createdAt: string;
+}
+
+const usersStore: RegisteredUser[] = [];
+const registrationRequestsStore: RegistrationRequest[] = [];
 
 app.get("/api/settings", (_req: Request, res: Response): void => {
   res.json(appSettings);
@@ -39,11 +64,36 @@ app.post("/api/admin/login", (req: Request, res: Response): void => {
 app.post("/api/user/login", (req: Request, res: Response): void => {
   const userId = String(req.body?.userId || "").trim();
   const loginCode = String(req.body?.loginCode || "").trim();
+  const registeredUser = usersStore.find((user) => user.userId === userId && user.loginCode === loginCode && user.status === "Active");
+  if (registeredUser) {
+    res.json({ success: true, user: registeredUser });
+    return;
+  }
   if (userId === "948210" && loginCode === "948210") {
     res.json({ success: true, user: { userId, fullName: "EasyDiseay User", role: "user" } });
     return;
   }
   res.status(401).json({ error: "Invalid User ID or Login Code." });
+});
+
+app.post("/api/registration-requests", (req: Request, res: Response): void => {
+  const fullName = String(req.body?.fullName || "").trim();
+  const email = String(req.body?.email || "").trim();
+  if (!fullName || !email) {
+    res.status(400).json({ error: "Full name and email are required." });
+    return;
+  }
+  const request: RegistrationRequest = {
+    id: `req-${Date.now()}`,
+    fullName,
+    email,
+    phone: String(req.body?.phone || "").trim(),
+    notes: String(req.body?.notes || "").trim(),
+    status: "pending",
+    createdAt: new Date().toISOString(),
+  };
+  registrationRequestsStore.unshift(request);
+  res.json({ success: true, request });
 });
 
 app.post("/api/analytics/track", (_req: Request, res: Response): void => {
@@ -644,8 +694,10 @@ const checkAndPerformAutoReset = (): void => {
   }
 };
 
-const openai = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+const openaiApiKey = process.env.OPENAI_API_KEY?.trim();
+const openaiModel = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+const openai = openaiApiKey
+  ? new OpenAI({ apiKey: openaiApiKey })
   : null;
 
 const analysisJsonSchema = {
@@ -667,6 +719,7 @@ const analysisJsonSchema = {
 } as const;
 
 app.post("/api/analyze-crop", async (req: Request, res: Response): Promise<void> => {
+  let requestMimeType = "unknown";
   try {
     const { imageBase64, cropHint, language } = req.body;
     if (!imageBase64) {
@@ -690,9 +743,10 @@ app.post("/api/analyze-crop", async (req: Request, res: Response): Promise<void>
       base64Data = parts[1] || "";
       imageUrl = `data:${mimeType};base64,${base64Data}`;
     }
+    requestMimeType = mimeType;
 
     const response = await openai.chat.completions.create({
-      model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+      model: openaiModel,
       temperature: 0.2,
       messages: [
         { role: "system", content: "You are EasyDiseay's careful agricultural plant pathologist for Bangladesh. Return only the requested structured diagnosis." },
@@ -710,9 +764,25 @@ app.post("/api/analyze-crop", async (req: Request, res: Response): Promise<void>
       return;
     }
     res.json({ analysis: JSON.parse(content) });
-  } catch {
-    console.error("Crop analysis request failed.");
-    res.status(500).json({ error: "Unable to analyze the crop image right now." });
+  } catch (error: unknown) {
+    const exception = error as {
+      name?: unknown;
+      message?: unknown;
+      status?: unknown;
+      code?: unknown;
+      type?: unknown;
+    };
+    console.error("Crop analysis request failed", {
+      name: typeof exception.name === "string" ? exception.name : "UnknownError",
+      message: typeof exception.message === "string" ? exception.message : "Unknown error",
+      status: typeof exception.status === "number" ? exception.status : undefined,
+      code: typeof exception.code === "string" ? exception.code : undefined,
+      type: typeof exception.type === "string" ? exception.type : undefined,
+      model: openaiModel,
+      hasApiKey: Boolean(openaiApiKey),
+      imageMimeType: requestMimeType,
+    });
+    res.status(502).json({ error: "AI analysis failed on the server. Check the server logs for details." });
   }
 });
 
@@ -1349,6 +1419,141 @@ app.post("/api/analytics/reset", (req: Request, res: Response): void => {
       : "Current 24-hour cycle analytics counter has been reset.",
     nextResetAt: analyticsStore.nextResetAt,
   });
+});
+
+app.get("/api/analyses", (_req: Request, res: Response): void => {
+  res.json({ data: analysesStore });
+});
+
+app.get("/api/stats", (_req: Request, res: Response): void => {
+  res.json({
+    totalAnalyses: analysesStore.length,
+    totalImages: analysesStore.filter((analysis) => Boolean(analysis.imageUrl)).length,
+    todayAnalyses: totalRequestsToday,
+    totalUsers: usersStore.length,
+  });
+});
+
+app.delete("/api/analyses/:id", (req: Request, res: Response): void => {
+  const previousLength = analysesStore.length;
+  analysesStore = analysesStore.filter((analysis) => analysis.id !== req.params.id);
+  res.json({ success: analysesStore.length < previousLength });
+});
+
+app.get("/api/medicines", (_req: Request, res: Response): void => {
+  res.json(medicinesStore);
+});
+
+app.post("/api/medicines", (req: Request, res: Response): void => {
+  const medicine: MedicineItem = {
+    id: `med-${Date.now()}`,
+    brandName: String(req.body?.brandName || "").trim(),
+    genericName: String(req.body?.genericName || "").trim(),
+    company: String(req.body?.company || "").trim(),
+    targetDiseases: Array.isArray(req.body?.targetDiseases) ? req.body.targetDiseases : [],
+    cropTypes: Array.isArray(req.body?.cropTypes) ? req.body.cropTypes : [],
+    dosage: String(req.body?.dosage || "").trim(),
+    dosageBn: String(req.body?.dosageBn || "").trim(),
+    packSize: String(req.body?.packSize || "").trim(),
+  };
+  if (!medicine.brandName || !medicine.genericName) {
+    res.status(400).json({ error: "Brand name and generic name are required." });
+    return;
+  }
+  medicinesStore.unshift(medicine);
+  res.json(medicine);
+});
+
+app.get("/api/diseases", (_req: Request, res: Response): void => {
+  res.json(diseasesStore);
+});
+
+app.post("/api/diseases", (req: Request, res: Response): void => {
+  const disease: DiseaseItem = {
+    id: `dis-${Date.now()}`,
+    name: String(req.body?.name || "").trim(),
+    nameBn: String(req.body?.nameBn || "").trim(),
+    crop: String(req.body?.crop || "").trim(),
+    cropBn: String(req.body?.cropBn || "").trim(),
+    pathogen: String(req.body?.pathogen || "").trim(),
+    severity: req.body?.severity === "Low" || req.body?.severity === "Medium" ? req.body.severity : "High",
+    commonMedicines: Array.isArray(req.body?.commonMedicines) ? req.body.commonMedicines : [],
+  };
+  if (!disease.name || !disease.crop) {
+    res.status(400).json({ error: "Disease name and crop are required." });
+    return;
+  }
+  diseasesStore.unshift(disease);
+  res.json(disease);
+});
+
+app.get("/api/users", (_req: Request, res: Response): void => {
+  res.json(usersStore);
+});
+
+app.post("/api/users", (req: Request, res: Response): void => {
+  const userId = String(req.body?.userId || "").trim();
+  const loginCode = String(req.body?.loginCode || "").trim();
+  const fullName = String(req.body?.fullName || "").trim();
+  if (!userId || !loginCode || !fullName) {
+    res.status(400).json({ error: "User ID, login code, and full name are required." });
+    return;
+  }
+  if (usersStore.some((user) => user.userId === userId)) {
+    res.status(409).json({ error: "That user ID is already registered." });
+    return;
+  }
+  const user: RegisteredUser = {
+    id: `user-${Date.now()}`,
+    userId,
+    loginCode,
+    fullName,
+    email: String(req.body?.email || "").trim(),
+    phone: String(req.body?.phone || "").trim(),
+    role: String(req.body?.role || "Registered Farmer").trim(),
+    status: "Active",
+    createdAt: new Date().toISOString(),
+  };
+  usersStore.unshift(user);
+  res.json({ success: true, user });
+});
+
+app.delete("/api/users/:id", (req: Request, res: Response): void => {
+  const previousLength = usersStore.length;
+  const remainingUsers = usersStore.filter((user) => user.id !== req.params.id && user.userId !== req.params.id);
+  usersStore.splice(0, usersStore.length, ...remainingUsers);
+  res.json({ success: usersStore.length < previousLength });
+});
+
+app.get("/api/registration-requests", (_req: Request, res: Response): void => {
+  res.json(registrationRequestsStore);
+});
+
+app.delete("/api/registration-requests/:id", (req: Request, res: Response): void => {
+  const previousLength = registrationRequestsStore.length;
+  const remainingRequests = registrationRequestsStore.filter((request) => request.id !== req.params.id);
+  registrationRequestsStore.splice(0, registrationRequestsStore.length, ...remainingRequests);
+  res.json({ success: registrationRequestsStore.length < previousLength });
+});
+
+app.post("/api/settings/security", (req: Request, res: Response): void => {
+  appSettings.loginRequired = Boolean(req.body?.loginRequired);
+  res.json({ success: true, loginRequired: appSettings.loginRequired });
+});
+
+app.post("/api/settings/contact", (req: Request, res: Response): void => {
+  appSettings.contactAdmin = {
+    email: String(req.body?.email || "").trim(),
+    phone: String(req.body?.phone || "").trim(),
+    description: String(req.body?.description || "").trim(),
+    displayStyle: req.body?.displayStyle === "card_dual" ? "card_dual" : "card_green",
+  };
+  res.json({ success: true, contactAdmin: appSettings.contactAdmin });
+});
+
+app.post("/api/settings/logo", (req: Request, res: Response): void => {
+  appSettings.customLogo = typeof req.body?.logo === "string" ? req.body.logo : "";
+  res.json({ success: true, customLogo: appSettings.customLogo });
 });
 
 
