@@ -1464,6 +1464,12 @@ app.post("/api/medicines", (req: Request, res: Response): void => {
   res.json(medicine);
 });
 
+app.delete("/api/medicines/:id", (req: Request, res: Response): void => {
+  const previousLength = medicinesStore.length;
+  medicinesStore = medicinesStore.filter((medicine) => medicine.id !== req.params.id);
+  res.json({ success: medicinesStore.length < previousLength });
+});
+
 app.get("/api/diseases", (_req: Request, res: Response): void => {
   res.json(diseasesStore);
 });
@@ -1485,6 +1491,12 @@ app.post("/api/diseases", (req: Request, res: Response): void => {
   }
   diseasesStore.unshift(disease);
   res.json(disease);
+});
+
+app.delete("/api/diseases/:id", (req: Request, res: Response): void => {
+  const previousLength = diseasesStore.length;
+  diseasesStore = diseasesStore.filter((disease) => disease.id !== req.params.id);
+  res.json({ success: diseasesStore.length < previousLength });
 });
 
 app.get("/api/users", (_req: Request, res: Response): void => {

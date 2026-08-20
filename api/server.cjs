@@ -946,6 +946,11 @@ app.post("/api/medicines", (req, res) => {
   medicinesStore.unshift(medicine);
   res.json(medicine);
 });
+app.delete("/api/medicines/:id", (req, res) => {
+  const previousLength = medicinesStore.length;
+  medicinesStore = medicinesStore.filter((medicine) => medicine.id !== req.params.id);
+  res.json({ success: medicinesStore.length < previousLength });
+});
 app.get("/api/diseases", (_req, res) => {
   res.json(diseasesStore);
 });
@@ -966,6 +971,11 @@ app.post("/api/diseases", (req, res) => {
   }
   diseasesStore.unshift(disease);
   res.json(disease);
+});
+app.delete("/api/diseases/:id", (req, res) => {
+  const previousLength = diseasesStore.length;
+  diseasesStore = diseasesStore.filter((disease) => disease.id !== req.params.id);
+  res.json({ success: diseasesStore.length < previousLength });
 });
 app.get("/api/users", (_req, res) => {
   res.json(usersStore);
